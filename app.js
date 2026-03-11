@@ -1,3 +1,4 @@
+//app.js
 require('dotenv').config();
 const express = require('express');
 const { MongoClient } = require('mongodb');
@@ -40,7 +41,6 @@ var MainPrdColorRoute = require('./controllers/lookupdata/productcolor/main/main
 var SubPrdColorRoute = require('./controllers/lookupdata/productcolor/sub/subprdcolor.route');
 
 //app
-
 var AppPrdColor = require('./controllers/app/prdcolor/prdcolor.route');
 
 var logger = require('morgan');
@@ -106,6 +106,13 @@ connectToMongoDB()
 // -------------------- Health Check --------------------
 app.get('/testconn', (req, res) => {
   res.send('Ok running to the API with the latest changes for you ===y===');
+});
+
+// -------------------- Start Server --------------------
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
 });
 
 module.exports = app;
