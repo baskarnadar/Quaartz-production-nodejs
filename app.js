@@ -60,7 +60,7 @@ app.use(bodyParser.json({ limit: "50mb" }));
 app.use(bodyParser.urlencoded({
   limit: "50mb",
   extended: true,
-  parameterLimit: 50000
+  parameterLimit: 30000
 }));
 
 // -------------------- Routes --------------------
@@ -106,13 +106,6 @@ connectToMongoDB()
 // -------------------- Health Check --------------------
 app.get('/testconn', (req, res) => {
   res.send('Ok running to the API with the latest changes for you ===y===');
-});
-
-// -------------------- Start Server --------------------
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
 });
 
 module.exports = app;

@@ -114,14 +114,19 @@ exports.createUser = async (req, res, next) => {
 };
 // adjust path as needed
 
-exports.isUserValid = async (req, res, next) => {
- 
- const jwt = require('jsonwebtoken');
-const SECRET =process.env.JWT_SECRET;
- const usernameVal = req.body.username;
-  const passwordVal = req.body.password;
+ exports.isUserValid = async (req, res, next) => {
+  const jwt = require('jsonwebtoken');
+  const crypto = require('crypto');
+  const SECRET = process.env.JWT_SECRET;
+
+  const usernameVal = String(req.body.username || '').trim();
+  const passwordVal = String(req.body.password || '').trim();
 
   try {
+    if (!usernameVal || !passwordVal) {
+      return sendResponse(res, 'Username and password are required.', null, null);
+    }
+
     // ✅ Generate MD5 hash (same as your logic)
     const combinedValue = usernameVal + passwordVal;
     const md5Buffer = crypto.createHash('md5').update(combinedValue, 'utf-8').digest();
@@ -130,8 +135,6 @@ const SECRET =process.env.JWT_SECRET;
     for (let i = 0; i < md5Buffer.length; i++) {
       pwdkey += md5Buffer[i];
     }
-
-     
 
     // ✅ Connect to DB
     const db = await connectToMongoDB();
@@ -142,19 +145,22 @@ const SECRET =process.env.JWT_SECRET;
       PassKey: pwdkey,
       UserStatus: 'ACTIVE',
     });
-const token = jwt.sign({ userId: user.UserID }, SECRET, { expiresIn: '1d' });
 
- const userWithToken = {
-        ...user,
-        token,
-      };
-
-    // ✅ If user found
-    if (user) {
-      sendResponse(res, 'Login successful',  null,userWithToken);
-    } else {
-      sendResponse(res, 'Invalid credentials or inactive account.', null, null);
+    // ✅ FIRST check if user exists
+    if (!user) {
+      return sendResponse(res, 'Invalid credentials or inactive account.', null, null);
     }
+
+    console.log('Login user found:', user.UserID);
+
+    const token = jwt.sign({ userId: user.UserID }, SECRET, { expiresIn: '1d' });
+
+    const userWithToken = {
+      ...user,
+      token,
+    };
+
+    return sendResponse(res, 'Login successful', null, userWithToken);
   } catch (error) {
     console.error('Login error:', error);
     next(error);

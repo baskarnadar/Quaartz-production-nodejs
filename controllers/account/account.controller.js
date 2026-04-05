@@ -122,6 +122,9 @@ exports.updateaccount = async (req, res, next) => {
     for (let i = 0; i < md5Buffer.length; i++) {
       pwdkey += md5Buffer[i];
     }
+    console.log(usernameval);
+       console.log(passwordval);
+    console.log(pwdkey);
     // console.log(pwdkey); // ⛔️ Do not log derived password
 
     // ✅ Connect to DB
