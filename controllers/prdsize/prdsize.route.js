@@ -8,7 +8,7 @@ router.post("/createProductSize",protectAPI, prdsize.createProductSize);
 router.post("/delProductSize",protectAPI, prdsize.delProductSize); 
 router.post("/getprdsize",protectAPI, prdsize.getprdsize); 
 router.post("/updateprdsize", protectAPI,prdsize.updateprdsize); 
-router.post("/getprdsizebyid",protectAPI, prdsize.getprdsizebyid); 
+router.post("/getprdsizebyid", prdsize.getprdsizebyid); 
 
 module.exports = router;
 
