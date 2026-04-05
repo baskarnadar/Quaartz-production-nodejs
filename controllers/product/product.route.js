@@ -27,7 +27,7 @@ router.post("/getProductByColor", protectAPI,product.getProductByColor);
 router.post("/createProduct",protectAPI, product.createProduct);
 router.get("/getProduct", protectAPI,product.getProduct);
 router.post("/getProductByProductID",protectAPI, product.getProductByProductID);
-router.post("/getcategoryproductlist",protectAPI, product.getcategoryproductlist);
+router.post("/getcategoryproductlist", product.getcategoryproductlist);
 
 //Spec  -- route 
 router.post("/createProductSpec", protectAPI,product.createProductSpec);
