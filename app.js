@@ -36,7 +36,7 @@ var SubMenuRoute = require('./controllers/admin/submenu/submenu.route');
 /* ✅ NEW: SETTINGS ROUTE */
 var SettingRoute = require('./controllers/setting/setting.route');
 
-/* ✅ NEW: LOOKUPDATA PRODUCT COLOR ROUTES (as per your folder structure) */
+/* ✅ NEW: LOOKUPDATA PRODUCT COLOR ROUTES */
 var MainPrdColorRoute = require('./controllers/lookupdata/productcolor/main/mainprdcolor.route');
 var SubPrdColorRoute = require('./controllers/lookupdata/productcolor/sub/subprdcolor.route');
 
@@ -91,7 +91,7 @@ app.use('/api/submenu', SubMenuRoute);
 app.use('/api/lookupdata/city', CityRoute);
 app.use('/api/app/prdcolor', AppPrdColor);
 
-/* ✅ LOOKUPDATA: PRODUCT COLOR (MAIN / SUB) */
+/* ✅ LOOKUPDATA: PRODUCT COLOR */
 app.use('/api/lookupdata/productcolor/main', MainPrdColorRoute);
 app.use('/api/lookupdata/productcolor/sub', SubPrdColorRoute);
 
@@ -108,10 +108,6 @@ app.get('/testconn', (req, res) => {
   res.send('Ok running to the API with the latest changes for you ===y===');
 });
 
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// ❌ REMOVED app.listen() (handled by bin/www)
 
 module.exports = app;

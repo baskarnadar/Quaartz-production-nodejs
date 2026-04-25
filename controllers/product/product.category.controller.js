@@ -203,4 +203,53 @@ exports.getProductSubCategory = async (req, res, next) => {
 };
 
 
+exports.updateProductCategory = async (req, res, next) => {
+  try {
+    const CategoryID = String(req.body?.CategoryID || "").trim();
+    const EnCategoryName = String(req.body?.EnCategoryName || "").trim();
+    const ArCategoryName = String(req.body?.ArCategoryName || "").trim();
 
+    // ✅ Validation
+    if (!CategoryID) {
+      return sendResponse(res, "CategoryID is required.", true, null);
+    }
+
+    if (!EnCategoryName) {
+      return sendResponse(res, "English Category Name is required.", true, null);
+    }
+
+    if (!ArCategoryName) {
+      return sendResponse(res, "Arabic Category Name is required.", true, null);
+    }
+
+    const db = await connectToMongoDB();
+
+    // ✅ Check if exists
+    const existing = await db.collection('tblProductCategory').findOne({
+      CategoryID: CategoryID
+    });
+
+    if (!existing) {
+      return sendResponse(res, "Category not found.", true, null);
+    }
+
+    // ✅ Update Data
+    const updateData = {
+      EnCategoryName: EnCategoryName,
+      ArCategoryName: ArCategoryName,
+      updatedAt: new Date(),
+      updatedBy: req.body.updatedBy || null,
+    };
+
+    const result = await db.collection('tblProductCategory').updateOne(
+      { CategoryID: CategoryID },
+      { $set: updateData }
+    );
+
+    return sendResponse(res, "Category updated successfully.", false, result);
+
+  } catch (error) {
+    console.log("updateProductCategory error:", error);
+    next(error);
+  }
+};

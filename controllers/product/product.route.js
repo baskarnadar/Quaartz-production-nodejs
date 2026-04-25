@@ -9,6 +9,9 @@ router.post("/getMainandSubCategories", protectAPI,productcategory.getMainandSub
 
 //Product Category -- route
 router.post("/createProductCategory", protectAPI,productcategory.createProductCategory);
+router.post("/updateProductCategory", protectAPI,productcategory.updateProductCategory);
+
+
 router.post("/getProductCategory",protectAPI, productcategory.getProductCategory);
 
 router.post("/createProductSubCategory",protectAPI, productcategory.createProductSubCategory);
