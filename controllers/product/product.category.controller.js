@@ -249,7 +249,7 @@ exports.updateProductCategory = async (req, res, next) => {
     return sendResponse(res, "Category updated successfully.", false, result);
 
   } catch (error) {
-    console.log("updateProductCategory error:", error);
+    console.log(" error:", error);
     next(error);
   }
 };
