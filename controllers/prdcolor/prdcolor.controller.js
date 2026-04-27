@@ -150,7 +150,7 @@ exports.editPrdColor = async (req, res, next) => {
 
 
  
- exports.getprdcolorkeycode = async (req, res, next) => {
+ exports.getcolorkeycodelist = async (req, res, next) => {
   try {
     const db = await connectToMongoDB();
 
@@ -186,6 +186,54 @@ exports.editPrdColor = async (req, res, next) => {
  
    
  
- 
+exports.getcolorkeycodelistbyid = async (req, res, next) => {
+  try {
+    const ColorKeyCode = String(req.body?.ColorKeyCode ?? "").trim();
 
+    if (!ColorKeyCode) {
+      return sendResponse(res, "ColorKeyCode is required.", true, []);
+    }
+
+    const db = await connectToMongoDB();
+
+    const collection = db.collection("tblPrdSpecialColor");
+
+    const documents = await collection
+      .find({
+        $expr: {
+          $eq: [
+            { $toUpper: { $trim: { input: "$ColorKeyCode" } } },
+            ColorKeyCode.toUpperCase()
+          ]
+        }
+      })
+      .project({
+        _id: 1,
+        SplColorCodeIDPrKey: 1,
+        ColorKeyCode: 1,
+        SplColorCodeID: 1,
+        HexValue: 1,
+        EnColorName: 1,
+        ArColorName: 1,
+      })
+      .toArray();
+
+    return sendResponse(
+      res,
+      "Special color list fetched successfully.",
+      null,
+      documents,
+      documents.length
+    );
+
+  } catch (error) {
+    console.log(error);
+    return sendResponse(
+      res,
+      "Failed to fetch special color list.",
+      true,
+      []
+    );
+  }
+};
  
