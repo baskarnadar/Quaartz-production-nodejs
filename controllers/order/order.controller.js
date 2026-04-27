@@ -730,22 +730,22 @@ exports.getorderbyorderrefnonew = async (req, res, next) => {
                           $ifNull: ["$$matchingColor.ArPrdColorName", ""]
                         },
 
-                        SplColorCodeIDPrKey: {
+                        SpecialColorSplColorCodeIDPrKey: {
                           $ifNull: ["$$matchingSpecialColor.SplColorCodeIDPrKey", ""]
                         },
-                        ColorKeyCode: {
+                        SpecialColorColorKeyCode: {
                           $ifNull: ["$$matchingSpecialColor.ColorKeyCode", ""]
                         },
-                        SplColorCodeID: {
+                        SpecialColorSplColorCodeID: {
                           $ifNull: ["$$matchingSpecialColor.SplColorCodeID", ""]
                         },
-                        HexValue: {
+                        SpecialColorHexValue: {
                           $ifNull: ["$$matchingSpecialColor.HexValue", ""]
                         },
-                        EnColorName: {
+                        SpecialColorEnColorName: {
                           $ifNull: ["$$matchingSpecialColor.EnColorName", ""]
                         },
-                        ArColorName: {
+                        SpecialColorArColorName: {
                           $ifNull: ["$$matchingSpecialColor.ArColorName", ""]
                         },
 
@@ -784,7 +784,12 @@ exports.getorderbyorderrefnonew = async (req, res, next) => {
       }
     ]).toArray();
 
-    return sendResponse(res, "Order data fetched successfully.", null, result);
+    return sendResponse(
+      res,
+      "Order data fetched successfully.",
+      null,
+      result
+    );
   } catch (error) {
     console.log(error);
     next(error);
