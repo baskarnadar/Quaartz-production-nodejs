@@ -190,37 +190,52 @@ exports.getcolorkeycodelistbyid = async (req, res, next) => {
   try {
     const ColorKeyCode = String(req.body?.ColorKeyCode ?? "").trim();
 
+    const PageNo = Math.max(parseInt(req.body?.PageNo ?? 1, 10), 1);
+    const PageSize = Math.min(Math.max(parseInt(req.body?.PageSize ?? 50, 10), 1), 100);
+    const skip = (PageNo - 1) * PageSize;
+
     if (!ColorKeyCode) {
       return sendResponse(res, "ColorKeyCode is required.", true, []);
     }
 
     const db = await connectToMongoDB();
-
     const collection = db.collection("tblPrdSpecialColor");
 
+    const matchQuery = {
+      $expr: {
+        $eq: [
+          { $toUpper: { $trim: { input: "$ColorKeyCode" } } },
+          ColorKeyCode.toUpperCase()
+        ]
+      }
+    };
+
+    const totalRecords = await collection.countDocuments(matchQuery);
+
     const documents = await collection
-      .find({
-        $expr: {
-          $eq: [
-            { $toUpper: { $trim: { input: "$ColorKeyCode" } } },
-            ColorKeyCode.toUpperCase()
-          ]
-        }
-      })
+      .find(matchQuery)
       .project({
-      
         SplColorCodeIDPrKey: 1,
         HexValue: 1,
         EnColorName: 1,
         ArColorName: 1,
       })
+      .sort({ EnColorName: 1 })
+      .skip(skip)
+      .limit(PageSize)
       .toArray();
 
     return sendResponse(
       res,
       "Special color list fetched successfully.",
       null,
-      documents,
+      {
+        PageNo,
+        PageSize,
+        TotalRecords: totalRecords,
+        TotalPages: Math.ceil(totalRecords / PageSize),
+        Data: documents,
+      },
       documents.length
     );
 
@@ -234,4 +249,3 @@ exports.getcolorkeycodelistbyid = async (req, res, next) => {
     );
   }
 };
- 
