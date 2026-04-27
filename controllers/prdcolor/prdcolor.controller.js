@@ -208,10 +208,8 @@ exports.getcolorkeycodelistbyid = async (req, res, next) => {
         }
       })
       .project({
-        _id: 1,
+      
         SplColorCodeIDPrKey: 1,
-        ColorKeyCode: 1,
-        SplColorCodeID: 1,
         HexValue: 1,
         EnColorName: 1,
         ArColorName: 1,
