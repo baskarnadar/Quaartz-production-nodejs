@@ -17,62 +17,77 @@ exports.getCartList = async (req, res, next) => {
   const ThumbUrl = url + "images/";
   
   try {
-    const OrderRefNoVal = req.body.OrderRefNo;  // Retrieve OrderRefNo from request body
+    const OrderRefNoVal = req.body.OrderRefNo;
     console.log(OrderRefNoVal);
 
-    const db = await connectToMongoDB();  // Connect to MongoDB
-    const collection = db.collection('tblcart');  // Access the tblcart collection
+    const db = await connectToMongoDB();
+    const collection = db.collection('tblcart');
 
-    // Perform aggregation to join tblcart with tblproduct and filter by OrderRefNo
     collection.aggregate([
         { 
-            $match: { OrderRefNo: OrderRefNoVal }  // Match documents with the provided OrderRefNo
+            $match: { OrderRefNo: OrderRefNoVal }
         },
         {
             $lookup: {
-                from: 'tblProduct',  // Join with tblproduct collection
-                localField: 'ProductID',  // Field in tblcart to match
-                foreignField: 'ProductID',  // Field in tblproduct to match
-                as: 'productDetails'  // Alias for the resulting array of product details
+                from: 'tblProduct',
+                localField: 'ProductID',
+                foreignField: 'ProductID',
+                as: 'productDetails'
             }
         },
         { 
             $unwind: {
-                path: '$productDetails',  // Unwind the productDetails array to get a single product object
-                preserveNullAndEmptyArrays: true  // Keep cart items even if no matching product exists
+                path: '$productDetails',
+                preserveNullAndEmptyArrays: true
             }
         },
         {
             $lookup: {
-                from: 'tblProductColor',  // Join with tblProductColor collection
-                localField: 'PrdColorCodeID',  // Field in tblcart to match
-                foreignField: 'PrdColorCodeID',  // Field in tblProductColor to match
-                as: 'colorDetails'  // Alias for the resulting array of color details
+                from: 'tblProductColor',
+                localField: 'PrdColorCodeID',
+                foreignField: 'PrdColorCodeID',
+                as: 'colorDetails'
             }
         },
         { 
             $unwind: {
-                path: '$colorDetails',  // Unwind the colorDetails array to get a single color object
-                preserveNullAndEmptyArrays: true  // Keep cart items even if no matching color exists
+                path: '$colorDetails',
+                preserveNullAndEmptyArrays: true
             }
         },
         {
             $lookup: {
-                from: 'tblProductSize', // Join with tblProductSize collection
-                localField: 'PrdSizeID', // Field in tblcart to match
-                foreignField: 'PrdSizeID', // Field in tblProductSize to match
-                as: 'sizeDetails' // Alias for the resulting array of size details
+                from: 'tblProductSize',
+                localField: 'PrdSizeID',
+                foreignField: 'PrdSizeID',
+                as: 'sizeDetails'
             }
         },
         { 
             $unwind: {
-                path: '$sizeDetails',  // Unwind the sizeDetails array to get a single size object
-                preserveNullAndEmptyArrays: true  // Keep cart items even if no matching size exists
+                path: '$sizeDetails',
+                preserveNullAndEmptyArrays: true
             }
         },
+
+        // ✅ NEW: link tblcart.SplColorCodeIDPrKey with tblPrdSpecialColor.SplColorCodeIDPrKey
+        {
+            $lookup: {
+                from: 'tblPrdSpecialColor',
+                localField: 'SplColorCodeIDPrKey',
+                foreignField: 'SplColorCodeIDPrKey',
+                as: 'specialColorDetails'
+            }
+        },
+        {
+            $unwind: {
+                path: '$specialColorDetails',
+                preserveNullAndEmptyArrays: true
+            }
+        },
+
         {
             $project: {
-                // Include all fields from tblcart
                 _id: 1,  
                 OrderRefNo: 1,
                 ProductID: 1,
@@ -81,44 +96,49 @@ exports.getCartList = async (req, res, next) => {
                 ProductAmount: 1,
                 ProductQty: 1,
                 CartID: 1,
-                OrderTypeID :1 ,
-                // Flatten the productDetails by including its fields directly in the main document
-                PrdName: '$productDetails.PrdName',  // Flatten PrdName
-                PrdThumb: '$productDetails.PrdThumb',  // Flatten PrdThumb
-                Price: '$productDetails.Price',  // Flatten Price
-                ProductDescription: '$productDetails.ProductDescription', // Flatten ProductDescription
-                // Add any other fields from tblproduct that you want to include in the main array
+                OrderTypeID: 1,
+
+                // ✅ Keep cart special color key
+                SplColorCodeIDPrKey: { $ifNull: ['$SplColorCodeIDPrKey', ''] },
+
+                PrdName: '$productDetails.PrdName',
+                PrdThumb: '$productDetails.PrdThumb',
+                Price: '$productDetails.Price',
+                ProductDescription: '$productDetails.ProductDescription',
                 
-                // Flatten the colorDetails to include the EnPrdColorName field
                 EnPrdColorName: '$colorDetails.EnPrdColorName',
-                ArPrdColorName: '$colorDetails.ArPrdColorName',   // Flatten EnPrdColorName
+                ArPrdColorName: '$colorDetails.ArPrdColorName',
                 
-                // Flatten the sizeDetails to include the EnPrdSizeName and ArPrdSizeName fields
-                EnPrdSizeName: '$sizeDetails.EnPrdSizeName',  // Add the English size name
-                ArPrdSizeName: '$sizeDetails.ArPrdSizeName'   // Add the Arabic size name
+                EnPrdSizeName: '$sizeDetails.EnPrdSizeName',
+                ArPrdSizeName: '$sizeDetails.ArPrdSizeName',
+
+                // ✅ NEW: special color fields, empty if no data
+                SpecialColorKeyCode: { $ifNull: ['$specialColorDetails.ColorKeyCode', ''] },
+                SpecialSplColorCodeID: { $ifNull: ['$specialColorDetails.SplColorCodeID', ''] },
+                SpecialHexValue: { $ifNull: ['$specialColorDetails.HexValue', ''] },
+                SpecialEnColorName: { $ifNull: ['$specialColorDetails.EnColorName', ''] },
+                SpecialArColorName: { $ifNull: ['$specialColorDetails.ArColorName', ''] }
             }
         }
     ]).toArray()
     .then(documents => {
 
-      // Add full image URL for product thumbnail
       for (const product of documents) {
            product.PrdThumbImageUrl = ThumbUrl + product.PrdThumb;
       }
       
-      sendResponse(res, "Cart Found.", null, documents);  // Send response with documents
+      sendResponse(res, "Cart Found.", null, documents);
     })
     .catch(err => {
         console.log(err);
-        sendResponse(res, "Error fetching cart and product details.", null, []);  // Send error response
+        sendResponse(res, "Error fetching cart and product details.", null, []);
     });
 
   } catch (error) {
     console.log(error);
-    next(error);  // Pass error to next middleware or handler
+    next(error);
   }
 };
-
 
  
 exports.addToCartOld = async (req, res, next) => {
