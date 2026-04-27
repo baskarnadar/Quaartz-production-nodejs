@@ -190,8 +190,9 @@ exports.getcolorkeycodelistbyid = async (req, res, next) => {
   try {
     const ColorKeyCode = String(req.body?.ColorKeyCode ?? "").trim();
 
+    // ✅ Default PageSize = 10
     const PageNo = Math.max(parseInt(req.body?.PageNo ?? 1, 10), 1);
-    const PageSize = Math.min(Math.max(parseInt(req.body?.PageSize ?? 50, 10), 1), 100);
+    const PageSize = Math.min(Math.max(parseInt(req.body?.PageSize ?? 10, 10), 1), 100);
     const skip = (PageNo - 1) * PageSize;
 
     if (!ColorKeyCode) {
