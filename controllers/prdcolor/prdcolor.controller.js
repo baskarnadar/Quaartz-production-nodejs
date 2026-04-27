@@ -150,7 +150,39 @@ exports.editPrdColor = async (req, res, next) => {
 
 
  
- 
+ exports.getprdcolorkeycode = async (req, res, next) => {
+  try {
+    const db = await connectToMongoDB();
+
+    const collection = db.collection("tblprdColorKeyCode");
+
+    const documents = await collection
+      .find({})
+      .project({
+        _id: 1,
+        ColorKeyCodeID: 1,
+        ColorKeyCode: 1,
+        ColorKeyCodeEnName: 1,
+        ColorKeyCodeArName: 1,
+      })
+      .toArray();
+
+    return sendResponse(
+      res,
+      "Color key code list fetched successfully.",
+      null,
+      documents
+    );
+  } catch (error) {
+    console.log(error);
+    return sendResponse(
+      res,
+      "Failed to fetch color key code list.",
+      true,
+      []
+    );
+  }
+};
  
    
  
