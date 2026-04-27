@@ -145,64 +145,70 @@ exports.addToCart = async (req, res, next) => {
     // Connect to MongoDB
     db = await connectToMongoDB();
     
-  const OrderRefNoVal = req.body.OrderRefNo;
-  const ProductIDVal = req.body.ProductID;
-  const ProductQtyVal = req.body.ProductQty;
-  const ProductAmountVal = req.body.ProductAmount;
-  const PrdColorCodeIDVal = req.body.PrdColorCodeID;
-  const PrdSizeIDVal = req.body.PrdSizeID;
-  const OrderTypeIDVal = req.body.OrderTypeID;
-  const PainterReqDateVal = req.body.PainterReqDate;
-  const PainterReqTimeVal=  req.body.PainterReqTime;
-  const PainterReqWorkTypeVal=  req.body.PainterReqWorkType;
-  const PainterReqSizeVal=  req.body.PainterReqSize;
+    const OrderRefNoVal = req.body.OrderRefNo;
+    const ProductIDVal = req.body.ProductID;
+    const ProductQtyVal = req.body.ProductQty;
+    const ProductAmountVal = req.body.ProductAmount;
+    const PrdColorCodeIDVal = req.body.PrdColorCodeID;
+    const PrdSizeIDVal = req.body.PrdSizeID;
+    const OrderTypeIDVal = req.body.OrderTypeID;
+    const PainterReqDateVal = req.body.PainterReqDate;
+    const PainterReqTimeVal = req.body.PainterReqTime;
+    const PainterReqWorkTypeVal = req.body.PainterReqWorkType;
+    const PainterReqSizeVal = req.body.PainterReqSize;
+
+    // ✅ NEW OPTIONAL FIELD
+    const SplColorCodeIDPrKeyVal = req.body.SplColorCodeIDPrKey ?? "";
 
     // Define the order data object
     const orderData = {
-     
       OrderRefNo: OrderRefNoVal,
       ProductID: ProductIDVal,
       ProductQty: ProductQtyVal,
       ProductAmount: ProductAmountVal,
-      PrdColorCodeID:PrdColorCodeIDVal,
-      PrdSizeID:PrdSizeIDVal,
-      OrderTypeID:OrderTypeIDVal,
+      PrdColorCodeID: PrdColorCodeIDVal,
+      PrdSizeID: PrdSizeIDVal,
+      OrderTypeID: OrderTypeIDVal,
       CartID: generateUniqueId(),
 
-          PainterReqDate : PainterReqDateVal,
-    PainterReqTime: PainterReqTimeVal,
-    PainterReqWorkType : PainterReqWorkTypeVal,
-    PainterReqSize : PainterReqSizeVal,
+      PainterReqDate: PainterReqDateVal,
+      PainterReqTime: PainterReqTimeVal,
+      PainterReqWorkType: PainterReqWorkTypeVal,
+      PainterReqSize: PainterReqSizeVal,
+
+      // ✅ ADD HERE
+      SplColorCodeIDPrKey: SplColorCodeIDPrKeyVal,
     };
 
     // Reference to the tblcart collection
     const collection = db.collection('tblcart'); 
-     
+
+    // ✅ INCLUDE IN DUPLICATE CHECK
     const existingOrder = await collection.findOne({
       OrderRefNo: OrderRefNoVal,
       ProductID: ProductIDVal,
-      PrdColorCodeID:PrdColorCodeIDVal,
-      PrdSizeID:PrdSizeIDVal,
+      PrdColorCodeID: PrdColorCodeIDVal,
+      PrdSizeID: PrdSizeIDVal,
+      SplColorCodeIDPrKey: SplColorCodeIDPrKeyVal, // NEW
     });
 
     if (existingOrder) {
       // If the product exists, increment the ProductQty by 1
       const updatedQty = existingOrder.ProductQty + 1;
       
-      // Update the document with the new quantity
       const updateResult = await collection.updateOne(
-        { _id: existingOrder._id }, // Use the _id from the existing document
+        { _id: existingOrder._id },
         { $set: { ProductQty: updatedQty } }
       );
 
-      sendResponse(res, "  Product Quantity Successfully Done.", null, updateResult);
+      sendResponse(res, "Product Quantity Successfully Done.", null, updateResult);
 
-     
     } else {
-      // If the product does not exist, insert the new order data
+      // Insert new order
       const result = await collection.insertOne(orderData);  
-      sendResponse(res, "  Order added successfully.", null, result);
+      sendResponse(res, "Order added successfully.", null, result);
     }
+
   } catch (error) {
     console.error(error);
     res.status(500).send({
@@ -210,11 +216,9 @@ exports.addToCart = async (req, res, next) => {
       error: error.message,
     });
   } finally {
-    // Optionally close the DB connection if needed
-    
+    // connection handling if needed
   }
 };
-
  
 exports.updateQtyToCart = async (req, res, next) => {
  // Example usage:
