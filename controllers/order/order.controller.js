@@ -519,109 +519,118 @@ exports.getorderbyorderrefnonew_work = async (req, res, next) => {
   }
 };
 
-exports.getorderbyorderrefnonew = async (req, res, next) => { 
+exports.getorderbyorderrefnonew = async (req, res, next) => {
   const db = await connectToMongoDB();
   const OrderRefNoVal = req.body.OrderRefNo;
-  const mainCategories = db.collection('tblorder');
+  const mainCategories = db.collection("tblorder");
   const url = process.env.IMAGEURL + "product/";
   const ThumbUrl = url + "images/";
 
   try {
-    // Perform aggregation with multiple $lookup stages
     const result = await mainCategories.aggregate([
-      { 
-        $match: { OrderRefNo: OrderRefNoVal } // Filter by OrderRefNo
+      {
+        $match: { OrderRefNo: OrderRefNoVal }
       },
       {
         $lookup: {
-          from: 'tblorderdetails', // The collection to join
-          localField: 'OrderRefNo', // Field from tblorder collection
-          foreignField: 'OrderRefNo', // Field from tblorderdetails collection
-          as: 'suborderviews' // New field for the result of the join
+          from: "tblorderdetails",
+          localField: "OrderRefNo",
+          foreignField: "OrderRefNo",
+          as: "suborderviews"
         }
       },
       {
         $lookup: {
-          from: 'tblreginfo', // The collection to join
-          localField: 'RegUserID', // Field from tblorder collection
-          foreignField: 'RegUserID', // Field from tblreginfo collection
-          as: 'userDetails' // New field for the result of the join
+          from: "tblreginfo",
+          localField: "RegUserID",
+          foreignField: "RegUserID",
+          as: "userDetails"
         }
       },
       {
         $lookup: {
-          from: 'tblProduct', // The collection to join
-          localField: 'suborderviews.ProductID', // Field from tblorderdetails (suborderviews) collection
-          foreignField: 'ProductID', // Field from tblproduct collection
-          as: 'productdetails' // New field to store product details
+          from: "tblProduct",
+          localField: "suborderviews.ProductID",
+          foreignField: "ProductID",
+          as: "productdetails"
         }
       },
       {
         $lookup: {
-          from: 'tblProductColor', // The collection to join for color details
-          localField: 'suborderviews.PrdColorCodeID', // Field from tblorderdetails collection
-          foreignField: 'PrdColorCodeID', // Field from tblProductColor collection
-          as: 'colorDetails' // New field to store color details
+          from: "tblProductColor",
+          localField: "suborderviews.PrdColorCodeID",
+          foreignField: "PrdColorCodeID",
+          as: "colorDetails"
         }
       },
       {
         $lookup: {
-          from: 'tblProductSize', // The collection to join for size details
-          localField: 'suborderviews.PrdSizeID', // Field from tblorderdetails collection
-          foreignField: 'PrdSizeID', // Field from tblProductSize collection
-          as: 'sizeDetails' // New field to store size details
+          from: "tblPrdSpecialColor",
+          localField: "suborderviews.SplColorCodeIDPrKey",
+          foreignField: "SplColorCodeIDPrKey",
+          as: "specialColorDetails"
         }
       },
-      // New Lookup for PickUpCityID matching with tblcity.CityID
       {
         $lookup: {
-          from: 'tblcity', // The collection to join for city details
-          localField: 'PickUpCityID', // Field from tblorder collection
-          foreignField: 'CityID', // Field from tblcity collection
-          as: 'citydetails' // New field to store city details
+          from: "tblProductSize",
+          localField: "suborderviews.PrdSizeID",
+          foreignField: "PrdSizeID",
+          as: "sizeDetails"
         }
       },
-      // New Lookup for PickUpStoreID matching with tblstoreinfo.StoreCodeID
       {
         $lookup: {
-          from: 'tblstoreinfo', // The collection to join for store details
-          let: { storeCode: { $toString: "$PickUpStoreID" } }, // Convert PickUpStoreID to string
+          from: "tblcity",
+          localField: "PickUpCityID",
+          foreignField: "CityID",
+          as: "citydetails"
+        }
+      },
+      {
+        $lookup: {
+          from: "tblstoreinfo",
+          let: { storeCode: { $toString: "$PickUpStoreID" } },
           pipeline: [
             {
               $match: {
                 $expr: {
-                  $eq: [{ $toString: "$StoreCodeID" }, "$$storeCode"] // Convert StoreCodeID to string and compare
+                  $eq: [{ $toString: "$StoreCodeID" }, "$$storeCode"]
                 }
               }
             }
           ],
-          as: 'storedetails' // New field to store store details
+          as: "storedetails"
         }
       },
       {
         $addFields: {
-          // Ensure productdetails is an array, even if it contains just one element
           productdetails: {
             $cond: {
               if: { $isArray: "$productdetails" },
-              then: "$productdetails", // Keep it as is if it's already an array
-              else: [{ $ifNull: ["$productdetails", []] }] // Convert it into an array if it's a single object
+              then: "$productdetails",
+              else: [{ $ifNull: ["$productdetails", []] }]
             }
           },
-          // Ensure colorDetails is an array, even if it contains just one element
           colorDetails: {
             $cond: {
               if: { $isArray: "$colorDetails" },
-              then: "$colorDetails", // Keep it as is if it's already an array
-              else: [{ $ifNull: ["$colorDetails", []] }] // Convert it into an array if it's a single object
+              then: "$colorDetails",
+              else: [{ $ifNull: ["$colorDetails", []] }]
             }
           },
-          // Ensure sizeDetails is an array, even if it contains just one element
+          specialColorDetails: {
+            $cond: {
+              if: { $isArray: "$specialColorDetails" },
+              then: "$specialColorDetails",
+              else: [{ $ifNull: ["$specialColorDetails", []] }]
+            }
+          },
           sizeDetails: {
             $cond: {
               if: { $isArray: "$sizeDetails" },
-              then: "$sizeDetails", // Keep it as is if it's already an array
-              else: [{ $ifNull: ["$sizeDetails", []] }] // Convert it into an array if it's a single object
+              then: "$sizeDetails",
+              else: [{ $ifNull: ["$sizeDetails", []] }]
             }
           }
         }
@@ -630,11 +639,11 @@ exports.getorderbyorderrefnonew = async (req, res, next) => {
         $addFields: {
           suborderviews: {
             $map: {
-              input: "$suborderviews", // Iterate over the suborderviews array
+              input: "$suborderviews",
               as: "subOrder",
               in: {
                 $mergeObjects: [
-                  "$$subOrder", // Keep the existing suborder details
+                  "$$subOrder",
                   {
                     $let: {
                       vars: {
@@ -642,55 +651,110 @@ exports.getorderbyorderrefnonew = async (req, res, next) => {
                           $arrayElemAt: [
                             {
                               $filter: {
-                                input: "$productdetails",  
-                                as: "product",  
-                                cond: { $eq: ["$$product.ProductID", "$$subOrder.ProductID"] }  
+                                input: "$productdetails",
+                                as: "product",
+                                cond: {
+                                  $eq: ["$$product.ProductID", "$$subOrder.ProductID"]
+                                }
                               }
-                            }, 
-                            0 // Get the first matching product
+                            },
+                            0
                           ]
                         },
                         matchingColor: {
                           $arrayElemAt: [
                             {
                               $filter: {
-                                input: "$colorDetails",  
-                                as: "color",  
-                                cond: { $eq: ["$$color.PrdColorCodeID", "$$subOrder.PrdColorCodeID"] }
+                                input: "$colorDetails",
+                                as: "color",
+                                cond: {
+                                  $eq: [
+                                    "$$color.PrdColorCodeID",
+                                    "$$subOrder.PrdColorCodeID"
+                                  ]
+                                }
                               }
-                            }, 
-                            0 // Get the first matching color
+                            },
+                            0
+                          ]
+                        },
+                        matchingSpecialColor: {
+                          $arrayElemAt: [
+                            {
+                              $filter: {
+                                input: "$specialColorDetails",
+                                as: "specialColor",
+                                cond: {
+                                  $eq: [
+                                    "$$specialColor.SplColorCodeIDPrKey",
+                                    "$$subOrder.SplColorCodeIDPrKey"
+                                  ]
+                                }
+                              }
+                            },
+                            0
                           ]
                         },
                         matchingSize: {
                           $arrayElemAt: [
                             {
                               $filter: {
-                                input: "$sizeDetails",  
-                                as: "size",  
-                                cond: { $eq: ["$$size.PrdSizeID", "$$subOrder.PrdSizeID"] }
+                                input: "$sizeDetails",
+                                as: "size",
+                                cond: {
+                                  $eq: ["$$size.PrdSizeID", "$$subOrder.PrdSizeID"]
+                                }
                               }
-                            }, 
-                            0 // Get the first matching size
+                            },
+                            0
                           ]
                         }
                       },
-                      in: { 
-                        Amount: { $ifNull: ["$$matchingProduct.PrdAmount", ""] },  
-                        PrdName: { $ifNull: ["$$matchingProduct.PrdName", ""] },  
-                        PrdThumb: { 
+                      in: {
+                        Amount: { $ifNull: ["$$matchingProduct.PrdAmount", ""] },
+                        PrdName: { $ifNull: ["$$matchingProduct.PrdName", ""] },
+                        PrdThumb: {
                           $ifNull: [
-                            { 
-                              $concat: [ThumbUrl, "$$matchingProduct.PrdThumb"] 
+                            {
+                              $concat: [ThumbUrl, "$$matchingProduct.PrdThumb"]
                             },
-                            "" 
+                            ""
                           ]
                         },
-                        PrdDesc: { $ifNull: ["$$matchingProduct.PrdDesc", ""] }, 
-                        EnPrdColorName: { $ifNull: ["$$matchingColor.EnPrdColorName", ""] },
-                        AdPrdColorName: { $ifNull: ["$$matchingColor.ArPrdColorName", ""] },
-                        EnPrdSizeName: { $ifNull: ["$$matchingSize.EnPrdSizeName", ""] },  // Add EnPrdSizeName here
-                        ArPrdSizeName: { $ifNull: ["$$matchingSize.ArPrdSizeName", ""] }   // Add ArPrdSizeName here
+                        PrdDesc: { $ifNull: ["$$matchingProduct.PrdDesc", ""] },
+
+                        EnPrdColorName: {
+                          $ifNull: ["$$matchingColor.EnPrdColorName", ""]
+                        },
+                        AdPrdColorName: {
+                          $ifNull: ["$$matchingColor.ArPrdColorName", ""]
+                        },
+
+                        SplColorCodeIDPrKey: {
+                          $ifNull: ["$$matchingSpecialColor.SplColorCodeIDPrKey", ""]
+                        },
+                        ColorKeyCode: {
+                          $ifNull: ["$$matchingSpecialColor.ColorKeyCode", ""]
+                        },
+                        SplColorCodeID: {
+                          $ifNull: ["$$matchingSpecialColor.SplColorCodeID", ""]
+                        },
+                        HexValue: {
+                          $ifNull: ["$$matchingSpecialColor.HexValue", ""]
+                        },
+                        EnColorName: {
+                          $ifNull: ["$$matchingSpecialColor.EnColorName", ""]
+                        },
+                        ArColorName: {
+                          $ifNull: ["$$matchingSpecialColor.ArColorName", ""]
+                        },
+
+                        EnPrdSizeName: {
+                          $ifNull: ["$$matchingSize.EnPrdSizeName", ""]
+                        },
+                        ArPrdSizeName: {
+                          $ifNull: ["$$matchingSize.ArPrdSizeName", ""]
+                        }
                       }
                     }
                   }
@@ -702,37 +766,30 @@ exports.getorderbyorderrefnonew = async (req, res, next) => {
       },
       {
         $addFields: {
-          // Add city and store details
           citydetails: {
             $cond: {
               if: { $isArray: "$citydetails" },
-              then: "$citydetails", // Keep it as is if it's already an array
-              else: [{ $ifNull: ["$citydetails", []] }] // Convert it into an array if it's a single object
+              then: "$citydetails",
+              else: [{ $ifNull: ["$citydetails", []] }]
             }
           },
           storedetails: {
             $cond: {
               if: { $isArray: "$storedetails" },
-              then: "$storedetails", // Keep it as is if it's already an array
-              else: [{ $ifNull: ["$storedetails", []] }] // Convert it into an array if it's a single object
+              then: "$storedetails",
+              else: [{ $ifNull: ["$storedetails", []] }]
             }
           }
         }
       }
     ]).toArray();
 
-    result.forEach(mainCategory => {
-      // Process and return the final result
-      sendResponse(res, "Order data fetched successfully.", null, result);
-
-    });
-
+    return sendResponse(res, "Order data fetched successfully.", null, result);
   } catch (error) {
     console.log(error);
-    next(error);  // Pass error to next middleware or handler
+    next(error);
   }
 };
-
  exports.updateOrderStatus = async (req, res, next) => {
   try {
     const db = await connectToMongoDB();
