@@ -78,7 +78,7 @@ exports.checkout = async (req, res, next) => {
     PrdColorCodeID: item.PrdColorCodeID,
     PrdSizeID: item.PrdSizeID,
 
-    // Optional field
+    // ✅ ADDITIONAL OPTIONAL FIELD
     SplColorCodeIDPrKey: item?.SplColorCodeIDPrKey ? item.SplColorCodeIDPrKey : "",
 
     createdAt: new Date(),     
@@ -90,9 +90,9 @@ exports.checkout = async (req, res, next) => {
     PainterReqTime: item.PainterReqTime,
     PainterReqWorkType: item.PainterReqWorkType,
     PainterReqSize: item.PainterReqSize,
-  })); 
+  }));
 
-  const cartItemsresult = await db.collection('tblorderdetails').insertMany(orderInfoItems); 
+  const artItemsresult = await db.collection('tblorderdetails').insertMany(orderInfoItems); 
  
   //remove Cart Item------------ 
   const Removecollection = db.collection('tblcart'); 
@@ -107,80 +107,4 @@ exports.checkout = async (req, res, next) => {
   Orderresult.UserOrderNo = UserOrderNoVal;
 
   sendResponse(res, "Checkout successfully done", null, Orderresult);  
-};  
-  const UserOrderNoVal = UserOrderNo();
-  const RegUserIDVal = req.body.RegUserID;
-  const OrderRefNoVal = req.body.OrderRefNo; 
-
-  const DeliveryTypeIDVal = req.body.DeliveryTypeID;
-  const PickUpCityIDVal = req.body.PickUpCityID; 
-  const PickUpStoreIDVal = req.body.PickUpStoreID;
-  const DeliveryAddressIDVal = req.body.DeliveryAddressID; 
-
-  const db = await connectToMongoDB();  
-
-  //Create Order Table ---------------------------------------------- 
-  let OrderData = {
-    DeliveryTypeID: DeliveryTypeIDVal,
-    PickUpCityID: PickUpCityIDVal,
-    PickUpStoreID: PickUpStoreIDVal,
-    DeliveryAddressID: DeliveryAddressIDVal,
-
-    UserOrderNo: UserOrderNoVal,
-    OrderRefNo: OrderRefNoVal,  
-    RegUserID: RegUserIDVal,
-
-    orderstatus: "NEW",  
-    createdAt: new Date(),
-    updatedAt: new Date(), 
-  };  
-
-  const Ordercollection = db.collection('tblorder');
-  const Orderresult = await Ordercollection.insertOne(OrderData);
-
-  console.log('OrderRefNoVal');
-  console.log(OrderRefNoVal);
-
-  //Create Orderinfo Table ---with many orders-------------------------------------------
-  const collection = db.collection('tblcart');   
-  const cartItems = await collection.find({ "OrderRefNo": OrderRefNoVal }).toArray(); 
-   
-  const orderInfoItems = cartItems.map(item => ({ 
-    OrderRefNo: OrderRefNoVal,       
-    ProductQty: item.ProductQty, 
-    ProductAmount: item.ProductAmount,
-    ProductID: item.ProductID,
-    PrdColorCodeID: item.PrdColorCodeID,
-    PrdSizeID: item.PrdSizeID,
-
-    // ✅ Copy optional special color field from tblcart to tblorderdetails
-    SplColorCodeIDPrKey: item.SplColorCodeIDPrKey ?? "",
-
-    createdAt: new Date(),     
-    updatedAt: new Date(),     
-    RegUserID: RegUserIDVal,
-    OrderTypeID: item.OrderTypeID,
-
-    PainterReqDate: item.PainterReqDate,
-    PainterReqTime: item.PainterReqTime,
-    PainterReqWorkType: item.PainterReqWorkType,
-    PainterReqSize: item.PainterReqSize,
-  })); 
-
-  const cartItemsresult = await db.collection('tblorderdetails').insertMany(orderInfoItems); 
- 
-  //remove Cart Item------------ 
-  const Removecollection = db.collection('tblcart'); 
-  const Removecondition = { OrderRefNo: OrderRefNoVal };
-  const Removeresult = await Removecollection.deleteMany(Removecondition); 
-
-  //-----------Return Result
-  console.log('UserOrderNoVal');
-  console.log(UserOrderNoVal);
-
-  Orderresult.status = "SUCCESS";
-  Orderresult.UserOrderNo = UserOrderNoVal;
-
-  sendResponse(res, "Checkout successfully done", null, Orderresult);  
-
-
+};
