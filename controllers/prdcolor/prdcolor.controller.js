@@ -165,30 +165,121 @@ exports.editPrdColor = async (req, res, next) => {
 };
 
  exports.addPrdColor = async (req, res, next) => {
-   try {
-     const db = await connectToMongoDB();
-     
+  try {
+    const db = await connectToMongoDB();
+    const collection = db.collection('tblProductColor');
 
-     const Productitem = {
-        EnPrdColorName:  req.body.EnPrdColorName,
-        ArPrdColorName:  req.body.ArPrdColorName,
-        modifiedAt: new Date(),
-        createdAt: new Date(),
-        PrdColorCode: req.body.PrdColorCode,
-        ProductID: req.body.ProductID,
-        PrdColorCodeID :generateUniqueId(),
-        createdBy: "USER",
-        updatedBy: "USER",
-        IsDataStatus:1,
-    };
+    const ProductID = req.body.ProductID;
 
-     const result = await db.collection('tblProductColor').insertOne(Productitem);
-     sendResponse(res, "Product Color inserted successfully.",  null , Productitem);
-   } catch (error) {
-     console.log(error);
-     next(error);
-   }
- };
+    if (!ProductID) {
+      return sendResponse(res, "ProductID is required.", null, []);
+    }
+
+    const rawColorKeyCode = req.body.ColorKeyCode;
+
+    const ColorKeyCodeArray = Array.isArray(rawColorKeyCode)
+      ? rawColorKeyCode
+      : rawColorKeyCode
+        ? [rawColorKeyCode]
+        : [];
+
+    const cleanColorKeyCodeArray = ColorKeyCodeArray
+      .map((x) => String(x || '').trim())
+      .filter((x) => x !== '');
+
+    const insertedItems = [];
+    const skippedItems = [];
+
+    // If ColorKeyCode has values, insert one record per key
+    if (cleanColorKeyCodeArray.length > 0) {
+      for (const ColorKeyCode of cleanColorKeyCodeArray) {
+        const existingColor = await collection.findOne({
+          ProductID: ProductID,
+          ColorKeyCode: ColorKeyCode,
+          IsDataStatus: 1
+        });
+
+        if (existingColor) {
+          skippedItems.push({
+            ProductID: ProductID,
+            ColorKeyCode: ColorKeyCode,
+            message: "Already exists"
+          });
+          continue;
+        }
+
+        const Productitem = {
+          EnPrdColorName: req.body.EnPrdColorName,
+          ArPrdColorName: req.body.ArPrdColorName,
+          modifiedAt: new Date(),
+          createdAt: new Date(),
+          PrdColorCode: req.body.PrdColorCode,
+          ProductID: ProductID,
+          PrdColorCodeID: generateUniqueId(),
+          createdBy: "USER",
+          updatedBy: "USER",
+          IsDataStatus: 1,
+          ColorKeyCode: ColorKeyCode
+        };
+
+        await collection.insertOne(Productitem);
+        insertedItems.push(Productitem);
+      }
+    } else {
+      // If ColorKeyCode empty, insert normal product color only
+      const existingColor = await collection.findOne({
+        ProductID: ProductID,
+        EnPrdColorName: req.body.EnPrdColorName,
+        ArPrdColorName: req.body.ArPrdColorName,
+        IsDataStatus: 1,
+        $or: [
+          { ColorKeyCode: { $exists: false } },
+          { ColorKeyCode: null },
+          { ColorKeyCode: "" }
+        ]
+      });
+
+      if (existingColor) {
+        skippedItems.push({
+          ProductID: ProductID,
+          message: "Already exists"
+        });
+      } else {
+        const Productitem = {
+          EnPrdColorName: req.body.EnPrdColorName,
+          ArPrdColorName: req.body.ArPrdColorName,
+          modifiedAt: new Date(),
+          createdAt: new Date(),
+          PrdColorCode: req.body.PrdColorCode,
+          ProductID: ProductID,
+          PrdColorCodeID: generateUniqueId(),
+          createdBy: "USER",
+          updatedBy: "USER",
+          IsDataStatus: 1
+        };
+
+        await collection.insertOne(Productitem);
+        insertedItems.push(Productitem);
+      }
+    }
+
+    return sendResponse(
+      res,
+      "Product Color processed successfully.",
+      null,
+      {
+        insertedCount: insertedItems.length,
+        skippedCount: skippedItems.length,
+        insertedItems: insertedItems,
+        skippedItems: skippedItems
+      }
+    );
+
+  } catch (error) {
+    console.log(error);
+    next(error);
+  }
+};
  exports.delPrdColor = async (req, res, next) => {
   const { PrdColorCodeID, ProductID } = req.body;  // Extract data from the request body
 
