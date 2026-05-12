@@ -11,7 +11,7 @@ function sendResponse(res, message, error, results) {
 }
 
 
-exports.getprdcolorbyid = async (req, res, next) => {
+exports.old_getprdcolorbyid = async (req, res, next) => {
   try {
     const ProductID = req.body.ProductID; 
     const db = await connectToMongoDB();
@@ -30,7 +30,69 @@ exports.getprdcolorbyid = async (req, res, next) => {
     next(error);
   }
 };
+exports.getprdcolorbyid = async (req, res, next) => {
+  try {
+    const ProductID = req.body.ProductID;
 
+    if (!ProductID || String(ProductID).trim() === "") {
+      return sendResponse(
+        res,
+        "ProductID is required.",
+        "ProductID is required.",
+        []
+      );
+    }
+
+    const db = await connectToMongoDB();
+
+    const productColorCollection = db.collection("tblProductColor");
+    const specialColorCollection = db.collection("tblPrdSpecialColor");
+
+    // ✅ Get all product colors
+    const productColors = await productColorCollection
+      .find({ ProductID: ProductID })
+      .toArray();
+
+    const finalColors = [];
+
+    for (const color of productColors) {
+      const ColorKeyCode = String(color.ColorKeyCode || "").trim();
+
+      // ✅ If ColorKeyCode exists, expand from tblPrdSpecialColor
+      if (ColorKeyCode !== "") {
+        const specialColors = await specialColorCollection
+          .find({ ColorKeyCode: ColorKeyCode })
+          .toArray();
+
+        if (specialColors.length > 0) {
+          specialColors.forEach((spColor) => {
+            finalColors.push({
+              _id: spColor._id, // from tblPrdSpecialColor
+              EnPrdColorName: spColor.EnColorName || "",
+              ArPrdColorName: spColor.ArColorName || "",
+              PrdColorCode: spColor.SplColorCodeID || "", // color code
+              ProductID: ProductID, // keep same product
+              PrdColorCodeID: spColor.SplColorCodeIDPrKey || "", // required
+              SplColorCodeIDPrKey: spColor.SplColorCodeIDPrKey || "", // ✅ Added
+              ColorKeyCode: spColor.ColorKeyCode || ColorKeyCode,
+            });
+          });
+        } else {
+          // fallback original record
+          finalColors.push(color);
+        }
+      } else {
+        // normal colors
+        finalColors.push(color);
+      }
+    }
+
+    return sendResponse(res, "Color successfully.", null, finalColors);
+  } catch (error) {
+    console.log(error);
+    next(error);
+  }
+};
 exports.getprdcolorbycolorcode = async (req, res, next) => {
   try {
     const PrdColorCode = req.body.PrdColorCode; 
