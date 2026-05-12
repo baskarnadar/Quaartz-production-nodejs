@@ -14,6 +14,6 @@ router.post("/getprdcolorlist", protectAPI,prdcolor.getprdcolorlist);
 router.post("/editPrdColor",protectAPI, prdcolor.editPrdColor);
 router.post("/addPrdColor", protectAPI,prdcolor.addPrdColor);
 router.post("/delPrdColor",protectAPI, prdcolor.delPrdColor);
-
+router.post("/getspecialcolorcode",protectAPI, prdcolor.getspecialcolorcode);
 module.exports = router;
 

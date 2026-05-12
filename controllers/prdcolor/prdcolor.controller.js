@@ -312,3 +312,18 @@ exports.getcolorkeycodelistbyid = async (req, res, next) => {
     );
   }
 };
+
+ exports.getspecialcolorcode = async (req, res, next) => {
+  try {
+    const db = await connectToMongoDB();
+
+    const collection = db.collection('tblprdColorKeyCode');
+
+    const documents = await collection.find({}).toArray();
+
+    sendResponse(res, "Color key code successfully.", null, documents);
+  } catch (error) {
+    console.log(error);
+    sendResponse(res, "No Color key code found.", error, []);
+  }
+};
