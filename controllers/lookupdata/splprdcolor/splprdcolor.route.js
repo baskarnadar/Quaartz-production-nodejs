@@ -1,4 +1,4 @@
-const Splcolor = require("./Splprdcolor.controller");
+const Splcolor = require("./splprdcolor.controller");
 const express = require("express");
 const router = express.Router();
 const { protectAPI } = require("../../middleware/auth");

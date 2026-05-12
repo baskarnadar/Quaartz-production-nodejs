@@ -1,4 +1,4 @@
-// Splprdcolor.controller.js
+// splprdcolor.controller.js
 const { connectToMongoDB } = require("../../../database/mongodb");
 const { generateUniqueId } = require("../../../controllers/operation/operation");
 
