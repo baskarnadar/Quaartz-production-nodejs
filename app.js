@@ -1,4 +1,4 @@
-//app.js
+// app.js
 require('dotenv').config();
 const express = require('express');
 const { MongoClient } = require('mongodb');
@@ -28,6 +28,11 @@ var CategoryRoute = require('./controllers/category/category.route');
 var DashBoardRoute = require('./controllers/dashboard/dashboard.route');
 var OfferRoute = require('./controllers/offer/offer.route');
 var CityRoute = require('./controllers/lookupdata/city/city.route');
+var Splprdcolor = require('./controllers/lookupdata/splprdcolor/Splprdcolor.route');
+
+/* ✅ NEW SPECIAL PRODUCT CATEGORY */
+var Splprdcategory = require('./controllers/lookupdata/splprdcategory/Splprdcategory.route');
+
 var OrderStatusRoute = require('./controllers/orderstatus/orderstatus.route');
 var BannerRoute = require('./controllers/banner/banner.route');
 var MainMenuRoute = require('./controllers/admin/mainmenu/mainmenu.route');
@@ -90,6 +95,11 @@ app.use('/api/mainmenu', MainMenuRoute);
 app.use('/api/submenu', SubMenuRoute);
 app.use('/api/lookupdata/city', CityRoute);
 app.use('/api/app/prdcolor', AppPrdColor);
+
+app.use('/api/lookupdata/splprdcolor', Splprdcolor);
+
+/* ✅ NEW SPECIAL PRODUCT CATEGORY ROUTE */
+app.use('/api/lookupdata/splprdcategory', Splprdcategory);
 
 /* ✅ LOOKUPDATA: PRODUCT COLOR */
 app.use('/api/lookupdata/productcolor/main', MainPrdColorRoute);
