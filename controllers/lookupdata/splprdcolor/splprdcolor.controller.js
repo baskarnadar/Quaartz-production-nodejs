@@ -20,49 +20,80 @@ function sendResponse(res, message, error, results) {
   try {
     const db = await connectToMongoDB();
 
-    // ✅ Pagination params
     const page = Math.max(parseInt(req.body.page || "1", 10), 1);
-    const limit = Math.max(parseInt(req.body.limit || "1000", 10), 1);
-    const skip = (page - 1) * limit;
+    const rawLimit = String(req.body.limit || "50").trim();
+    const isShowAll = rawLimit.toUpperCase() === "ALL";
 
-    // ✅ Base filter only
-    // Returns ALL categories
+    const limit = isShowAll ? 0 : Math.max(parseInt(rawLimit, 10), 1);
+    const skip = isShowAll ? 0 : (page - 1) * limit;
+
+    const ColorKeyCode = String(req.body.ColorKeyCode || "").trim();
+    const searchText = String(req.body.searchText || "").trim();
+
+    const allowedSortFields = [
+      "ColorKeyCode",
+      "SplColorCodeID",
+      "HexValue",
+      "EnColorName",
+      "ArColorName",
+      "createdAt",
+    ];
+
+    const sortField = allowedSortFields.includes(req.body.sortField)
+      ? req.body.sortField
+      : "createdAt";
+
+    const sortOrder = String(req.body.sortOrder || "desc").toLowerCase() === "asc" ? 1 : -1;
+
     const filter = {
       IsDataStatus: { $ne: 0 },
     };
 
-    // ✅ Total count
+    // ✅ If category selected, filter by ColorKeyCode
+    // ✅ If nothing selected / empty / ALL, get all records
+    if (ColorKeyCode && ColorKeyCode !== "ALL") {
+      filter.ColorKeyCode = ColorKeyCode;
+    }
+
+    // ✅ Search
+    if (searchText) {
+      filter.$or = [
+        { ColorKeyCode: { $regex: searchText, $options: "i" } },
+        { SplColorCodeID: { $regex: searchText, $options: "i" } },
+        { HexValue: { $regex: searchText, $options: "i" } },
+        { EnColorName: { $regex: searchText, $options: "i" } },
+        { ArColorName: { $regex: searchText, $options: "i" } },
+      ];
+    }
+
     const totalRecords = await db
       .collection("tblPrdSpecialColor")
       .countDocuments(filter);
 
-    const totalPages = Math.max(1, Math.ceil(totalRecords / limit));
-
-    // ✅ Fetch all records page-wise
-    const documents = await db
+    const query = db
       .collection("tblPrdSpecialColor")
       .find(filter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .toArray();
+      .sort({ [sortField]: sortOrder });
 
-    return sendResponse(
-      res,
-      "Special color fetched successfully.",
-      null,
-      {
-        records: documents,
-        pagination: {
-          currentPage: page,
-          perPage: limit,
-          totalRecords,
-          totalPages,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1,
-        },
-      }
-    );
+    if (!isShowAll) {
+      query.skip(skip).limit(limit);
+    }
+
+    const documents = await query.toArray();
+
+    const totalPages = isShowAll ? 1 : Math.max(1, Math.ceil(totalRecords / limit));
+
+    return sendResponse(res, "Special color fetched successfully.", null, {
+      records: documents,
+      pagination: {
+        currentPage: isShowAll ? 1 : page,
+        perPage: isShowAll ? totalRecords : limit,
+        totalRecords,
+        totalPages,
+        hasNextPage: !isShowAll && page < totalPages,
+        hasPrevPage: !isShowAll && page > 1,
+      },
+    });
   } catch (error) {
     console.error("getSplcolorlist error:", error);
     next(error);
