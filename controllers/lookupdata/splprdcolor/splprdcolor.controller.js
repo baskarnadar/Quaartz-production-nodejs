@@ -43,19 +43,19 @@ function sendResponse(res, message, error, results) {
       ? req.body.sortField
       : "createdAt";
 
-    const sortOrder = String(req.body.sortOrder || "desc").toLowerCase() === "asc" ? 1 : -1;
+    const sortOrder =
+      String(req.body.sortOrder || "desc").toLowerCase() === "asc" ? 1 : -1;
 
     const filter = {
       IsDataStatus: { $ne: 0 },
     };
 
-    // ✅ If category selected, filter by ColorKeyCode
-    // ✅ If nothing selected / empty / ALL, get all records
+    // ✅ Category filter
     if (ColorKeyCode && ColorKeyCode !== "ALL") {
       filter.ColorKeyCode = ColorKeyCode;
     }
 
-    // ✅ Search
+    // ✅ Search filter
     if (searchText) {
       filter.$or = [
         { ColorKeyCode: { $regex: searchText, $options: "i" } },
@@ -66,10 +66,12 @@ function sendResponse(res, message, error, results) {
       ];
     }
 
+    // ✅ Total records
     const totalRecords = await db
       .collection("tblPrdSpecialColor")
       .countDocuments(filter);
 
+    // ✅ Query
     const query = db
       .collection("tblPrdSpecialColor")
       .find(filter)
@@ -81,19 +83,32 @@ function sendResponse(res, message, error, results) {
 
     const documents = await query.toArray();
 
-    const totalPages = isShowAll ? 1 : Math.max(1, Math.ceil(totalRecords / limit));
+    const totalPages = isShowAll
+      ? 1
+      : Math.max(1, Math.ceil(totalRecords / limit));
 
-    return sendResponse(res, "Special color fetched successfully.", null, {
-      records: documents,
-      pagination: {
-        currentPage: isShowAll ? 1 : page,
-        perPage: isShowAll ? totalRecords : limit,
-        totalRecords,
-        totalPages,
-        hasNextPage: !isShowAll && page < totalPages,
-        hasPrevPage: !isShowAll && page > 1,
-      },
-    });
+    return sendResponse(
+      res,
+      "Special color fetched successfully.",
+      null,
+      {
+        // ✅ Main records
+        records: documents,
+
+        // ✅ Direct total count
+        totalRecords: totalRecords,
+
+        // ✅ Full pagination
+        pagination: {
+          currentPage: isShowAll ? 1 : page,
+          perPage: isShowAll ? totalRecords : limit,
+          totalRecords: totalRecords,
+          totalPages: totalPages,
+          hasNextPage: !isShowAll && page < totalPages,
+          hasPrevPage: !isShowAll && page > 1,
+        },
+      }
+    );
   } catch (error) {
     console.error("getSplcolorlist error:", error);
     next(error);
