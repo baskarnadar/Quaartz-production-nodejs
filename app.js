@@ -1,4 +1,4 @@
-// app.js
+ // app.js
 require('dotenv').config();
 const express = require('express');
 const { MongoClient } = require('mongodb');
@@ -28,24 +28,24 @@ var CategoryRoute = require('./controllers/category/category.route');
 var DashBoardRoute = require('./controllers/dashboard/dashboard.route');
 var OfferRoute = require('./controllers/offer/offer.route');
 var CityRoute = require('./controllers/lookupdata/city/city.route');
-var Splprdcolor = require('./controllers/lookupdata/splprdcolor/Splprdcolor.route');
 
-/* ✅ NEW SPECIAL PRODUCT CATEGORY */
-var Splprdcategory = require('./controllers/lookupdata/splprdcategory/Splprdcategory.route');
+/* ✅ FIXED LOWERCASE ROUTES */
+var Splprdcolor = require('./controllers/lookupdata/splprdcolor/splprdcolor.route');
+var Splprdcategory = require('./controllers/lookupdata/splprdcategory/splprdcategory.route');
 
 var OrderStatusRoute = require('./controllers/orderstatus/orderstatus.route');
 var BannerRoute = require('./controllers/banner/banner.route');
 var MainMenuRoute = require('./controllers/admin/mainmenu/mainmenu.route');
 var SubMenuRoute = require('./controllers/admin/submenu/submenu.route');
 
-/* ✅ NEW: SETTINGS ROUTE */
+/* ✅ SETTINGS ROUTE */
 var SettingRoute = require('./controllers/setting/setting.route');
 
-/* ✅ NEW: LOOKUPDATA PRODUCT COLOR ROUTES */
+/* ✅ LOOKUPDATA PRODUCT COLOR ROUTES */
 var MainPrdColorRoute = require('./controllers/lookupdata/productcolor/main/mainprdcolor.route');
 var SubPrdColorRoute = require('./controllers/lookupdata/productcolor/sub/subprdcolor.route');
 
-//app
+// App Product Color
 var AppPrdColor = require('./controllers/app/prdcolor/prdcolor.route');
 
 var logger = require('morgan');
@@ -61,63 +61,82 @@ app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'jade');
 
 app.use(cors());
-app.use(bodyParser.json({ limit: "50mb" }));
+
+app.use(bodyParser.json({
+  limit: '50mb'
+}));
+
 app.use(bodyParser.urlencoded({
-  limit: "50mb",
+  limit: '50mb',
   extended: true,
-  parameterLimit: 30000
+  parameterLimit: 30000,
 }));
 
 // -------------------- Routes --------------------
 app.use('/', indexRouter);
 app.use('/users', usersRouter);
+
 app.use('/api/item', itemRoute);
 app.use('/api/store', storeRoute);
 app.use('/api/product/upload/', upload);
 app.use('/api/product', productRoute);
+
 app.use('/api/home', HomeRoute);
 app.use('/api/common', CommonRoute);
 app.use('/api/cart', CartRoute);
 app.use('/api/account', AccountRoute);
 app.use('/api/checkout', CheckoutRoute);
 app.use('/api/order', OrderRoute);
+
 app.use('/api/prdcolor', PrdColor);
 app.use('/api/prdsize', PrdSize);
 app.use('/api/page', Page);
+
 app.use('/api/user', UserRoute);
 app.use('/api/painter', PainterRoute);
 app.use('/api/category', CategoryRoute);
 app.use('/api/dashboard', DashBoardRoute);
 app.use('/api/offer', OfferRoute);
+
 app.use('/api/orderstatus', OrderStatusRoute);
 app.use('/api/banner', BannerRoute);
+
 app.use('/api/mainmenu', MainMenuRoute);
 app.use('/api/submenu', SubMenuRoute);
+
 app.use('/api/lookupdata/city', CityRoute);
+
+/* ✅ APP PRODUCT COLOR */
 app.use('/api/app/prdcolor', AppPrdColor);
 
+/* ✅ SPECIAL PRODUCT COLOR */
 app.use('/api/lookupdata/splprdcolor', Splprdcolor);
 
-/* ✅ NEW SPECIAL PRODUCT CATEGORY ROUTE */
+/* ✅ SPECIAL PRODUCT CATEGORY */
 app.use('/api/lookupdata/splprdcategory', Splprdcategory);
 
-/* ✅ LOOKUPDATA: PRODUCT COLOR */
+/* ✅ LOOKUPDATA PRODUCT COLOR */
 app.use('/api/lookupdata/productcolor/main', MainPrdColorRoute);
 app.use('/api/lookupdata/productcolor/sub', SubPrdColorRoute);
 
-/* ✅ SETTINGS API */
+/* ✅ SETTINGS */
 app.use('/api/setting', SettingRoute);
 
 // -------------------- MongoDB --------------------
 connectToMongoDB()
-  .then(() => console.log('Database connected successfully'))
-  .catch(err => console.error('Database connection failed', err));
+  .then(() => {
+    console.log('Database connected successfully');
+  })
+  .catch((err) => {
+    console.error('Database connection failed', err);
+  });
 
 // -------------------- Health Check --------------------
 app.get('/testconn', (req, res) => {
   res.send('Ok running to the API with the latest changes for you ===y===');
 });
 
-// ❌ REMOVED app.listen() (handled by bin/www)
+// ❌ REMOVED app.listen()
+// Server handled by /bin/www
 
 module.exports = app;
