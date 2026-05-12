@@ -31,21 +31,67 @@ exports.getallproductsize = async (req, res, next) => {
   }
 };
 
-exports.getprdsizebyid = async (req, res, next) => {
+ exports.getprdsizebyid = async (req, res, next) => {
   try {
-    const ProductID = req.body.ProductID; 
-    const PrdColorCodeID=req.body.PrdColorCodeID; 
+    const ProductID = String(req.body.ProductID || '').trim();
+    const BodyPrdColorCodeID = String(req.body.PrdColorCodeID || '').trim();
+    const ColorKeyCodeVal = String(req.body.ColorKeyCode || '').trim();
+
     const db = await connectToMongoDB();
-    
-   const collection = await db.collection('tblProductSize'); 
-   collection.find({ ProductID: ProductID,PrdColorCodeID:PrdColorCodeID }).toArray()
-   .then(documents => {
-    sendResponse(res, "Size  successfully.",  null , documents);
-   })
-   .catch(err => {
-    sendResponse(res, "No Color  ",  null , documents);
-   });
- 
+
+    let FinalPrdColorCodeID = BodyPrdColorCodeID;
+
+    // =========================================================
+    // OPTIONAL LOGIC:
+    // If ColorKeyCode exists, fetch matching PrdColorCodeID
+    // from tblProductColor
+    // =========================================================
+    if (ColorKeyCodeVal !== "") {
+      const colorCollection = db.collection('tblProductColor');
+
+      const colorDoc = await colorCollection.findOne({
+        ProductID: ProductID,
+        ColorKeyCode: ColorKeyCodeVal
+      });
+
+      if (colorDoc && colorDoc.PrdColorCodeID) {
+        FinalPrdColorCodeID = String(colorDoc.PrdColorCodeID).trim();
+      }
+    }
+
+    // =========================================================
+    // SIZE FETCH
+    // =========================================================
+    const collection = db.collection('tblProductSize');
+
+    const query = {
+      ProductID: ProductID
+    };
+
+    // Only apply color filter if available
+    if (FinalPrdColorCodeID !== "") {
+      query.PrdColorCodeID = FinalPrdColorCodeID;
+    }
+
+    collection.find(query).toArray()
+      .then(documents => {
+        sendResponse(
+          res,
+          "Size successfully.",
+          null,
+          documents
+        );
+      })
+      .catch(err => {
+        console.log(err);
+        sendResponse(
+          res,
+          "No Size",
+          null,
+          []
+        );
+      });
+
   } catch (error) {
     console.log(error);
     next(error);
