@@ -20,19 +20,53 @@ exports.getSplcolorlist = async (req, res, next) => {
   try {
     const db = await connectToMongoDB();
 
+    // ✅ Pagination params
+    const page = Math.max(parseInt(req.body.page || "1", 10), 1);
+    const limit = 50;
+    const skip = (page - 1) * limit;
+
+    // ✅ Filter
+    const filter = {
+      IsDataStatus: { $ne: 0 },
+    };
+
+    // ✅ Total count
+    const totalRecords = await db
+      .collection("tblPrdSpecialColor")
+      .countDocuments(filter);
+
+    const totalPages = Math.ceil(totalRecords / limit);
+
+    // ✅ Fetch paginated records
     const documents = await db
       .collection("tblPrdSpecialColor")
-      .find({ IsDataStatus: { $ne: 0 } })
+      .find(filter)
       .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
       .toArray();
 
-    return sendResponse(res, "Special color fetched successfully.", null, documents);
+    return sendResponse(
+      res,
+      "Special color fetched successfully.",
+      null,
+      {
+        records: documents,
+        pagination: {
+          currentPage: page,
+          perPage: limit,
+          totalRecords,
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        },
+      }
+    );
   } catch (error) {
     console.error("getSplcolorlist error:", error);
     next(error);
   }
 };
-
 // ------------------------------------------------------------
 // FETCH FOR EDIT
 // Frontend sends: SplColorCodeIDPrKey
