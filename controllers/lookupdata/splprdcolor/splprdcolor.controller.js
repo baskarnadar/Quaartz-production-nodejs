@@ -22,7 +22,7 @@ function sendResponse(res, message, error, results) {
 
     // ✅ Pagination params
     const page = Math.max(parseInt(req.body.page || "1", 10), 1);
-    const limit = Math.max(parseInt(req.body.limit || "50", 10), 1);
+    const limit = Math.max(parseInt(req.body.limit || "1000", 10), 1);
     const skip = (page - 1) * limit;
 
     // ✅ Base filter only
