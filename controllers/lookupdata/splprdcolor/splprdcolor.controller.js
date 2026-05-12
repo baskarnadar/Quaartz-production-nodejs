@@ -16,16 +16,17 @@ function sendResponse(res, message, error, results) {
 // GET: list all special product colors
 // Table: tblPrdSpecialColor
 // ------------------------------------------------------------
-exports.getSplcolorlist = async (req, res, next) => {
+ exports.getSplcolorlist = async (req, res, next) => {
   try {
     const db = await connectToMongoDB();
 
     // ✅ Pagination params
     const page = Math.max(parseInt(req.body.page || "1", 10), 1);
-    const limit = 50;
+    const limit = Math.max(parseInt(req.body.limit || "50", 10), 1);
     const skip = (page - 1) * limit;
 
-    // ✅ Filter
+    // ✅ Base filter only
+    // Returns ALL categories
     const filter = {
       IsDataStatus: { $ne: 0 },
     };
@@ -35,9 +36,9 @@ exports.getSplcolorlist = async (req, res, next) => {
       .collection("tblPrdSpecialColor")
       .countDocuments(filter);
 
-    const totalPages = Math.ceil(totalRecords / limit);
+    const totalPages = Math.max(1, Math.ceil(totalRecords / limit));
 
-    // ✅ Fetch paginated records
+    // ✅ Fetch all records page-wise
     const documents = await db
       .collection("tblPrdSpecialColor")
       .find(filter)
