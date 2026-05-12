@@ -7,6 +7,7 @@ const router = express.Router();
 
 router.post("/getprdcolorbycolorcode", prdcolor.getprdcolorbycolorcode);
 router.post("/getprdcolorbyid", prdcolor.getprdcolorbyid);
+router.post("/getprdcolorbyidgroup", prdcolor.getprdcolorbyidgroup);
 router.post("/getcolorkeycodelist", prdcolor.getcolorkeycodelist);
 router.post("/getcolorkeycodelistbyid", prdcolor.getcolorkeycodelistbyid);
 router.post("/getprdcolorlist", protectAPI,prdcolor.getprdcolorlist);

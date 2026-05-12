@@ -11,7 +11,7 @@ function sendResponse(res, message, error, results) {
 }
 
 
-exports.old_getprdcolorbyid = async (req, res, next) => {
+exports.getprdcolorbyidgroup = async (req, res, next) => {
   try {
     const ProductID = req.body.ProductID; 
     const db = await connectToMongoDB();
