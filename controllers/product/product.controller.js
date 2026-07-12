@@ -37,14 +37,101 @@ exports.getProductSpec = async (req, res, next) => {
   }
 };
 
-exports.createProductSpec = async (req, res, next) => {
+ exports.createProductSpec = async (req, res, next) => {
   try {
     const db = await connectToMongoDB();
-    const Productitem = req.body;
-    const result = await db.collection('tblProductSpec').insertOne(Productitem);
-    sendResponse(res, "Spec inserted successfully.",  null , result,null);
+
+    // =========================================================
+    // Get and validate request data
+    // =========================================================
+    const ProductID = String(req.body?.ProductID || "").trim();
+    const PrdSpecDesc = String(req.body?.PrdSpecDesc || "").trim();
+
+    if (!ProductID) {
+      return sendResponse(
+        res,
+        "ProductID is required.",
+        true,
+        null,
+        null
+      );
+    }
+
+    if (!PrdSpecDesc) {
+      return sendResponse(
+        res,
+        "Product specification description is required.",
+        true,
+        null,
+        null
+      );
+    }
+
+    const productSpecCollection = db.collection("tblProductSpec");
+
+    // =========================================================
+    // Check whether ProductID already exists
+    // =========================================================
+    const existingProductSpec = await productSpecCollection.findOne({
+      ProductID: ProductID,
+    });
+
+    // =========================================================
+    // Update existing product specification
+    // =========================================================
+    if (existingProductSpec) {
+      const updateResult = await productSpecCollection.updateOne(
+        {
+          ProductID: ProductID,
+        },
+        {
+          $set: {
+            PrdSpecDesc: PrdSpecDesc,
+            UpdatedDate: new Date(),
+          },
+        }
+      );
+
+      return sendResponse(
+        res,
+        "Product specification updated successfully.",
+        null,
+        {
+          ProductID: ProductID,
+          PrdSpecDesc: PrdSpecDesc,
+          matchedCount: updateResult.matchedCount,
+          modifiedCount: updateResult.modifiedCount,
+        },
+        null
+      );
+    }
+
+    // =========================================================
+    // Insert new product specification
+    // =========================================================
+    const productSpecItem = {
+      ProductID: ProductID,
+      PrdSpecDesc: PrdSpecDesc,
+      CreatedDate: new Date(),
+      UpdatedDate: new Date(),
+    };
+
+    const insertResult = await productSpecCollection.insertOne(
+      productSpecItem
+    );
+
+    return sendResponse(
+      res,
+      "Product specification inserted successfully.",
+      null,
+      {
+        ...productSpecItem,
+        insertedId: insertResult.insertedId,
+      },
+      null
+    );
   } catch (error) {
-    console.log(error);
+    console.error("[createProductSpec] Error:", error);
     next(error);
   }
 };
