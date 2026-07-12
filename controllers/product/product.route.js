@@ -23,7 +23,7 @@ router.post("/getProductByProductID", protectAPI, product.getProductByProductID)
 // ✅ Other
 router.post("/getcategoryproductlist", product.getcategoryproductlist);
 router.post("/createProductSpec", protectAPI, product.createProductSpec);
-router.post("/getProductSpec", protectAPI, product.getProductSpec);
+router.post("/getProductSpec",  product.getProductSpec);
 router.post("/createProductColor", protectAPI, product.createProductColor);
 router.get("/getProductColor", protectAPI, product.getProductColor);
 router.post("/getProductSizeAll", protectAPI, product.getProductSizeAll);
