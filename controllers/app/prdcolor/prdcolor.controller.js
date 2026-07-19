@@ -80,119 +80,438 @@ exports.getsubcolor = async (req, res, next) => {
 };
 
  
- 
- 
- // controllers/prdcolor/prdcolor.controller.js
-// (full function, no import/require block)
-
-// controllers/prdcolor/prdcolor.controller.js
-// (full function, no import/require block)
-
-exports.getprdcolormatchlist = async (req, res, next) => {
+ exports.getprdcolormatchlist = async (req, res, next) => {
   try {
     const db = await connectToMongoDB();
 
-    const { PrdColorCode } = req.body || {};
-    const prdColorCodeStr = String(PrdColorCode || "").trim();
+    const {
+      PrdColorCode,
+      usercategory, // Currently accepted but not used unless product has this field
+    } = req.body || {};
 
-    if (!prdColorCodeStr) {
-      return sendResponse(res, "PrdColorCode is required.", "validation_error", null);
-    }
-    var IMAGEURL=process.env.IMAGEURL+"product/images/";
+    // =========================================================
+    // Helper: Normalize HEX color
+    // Supports #FFFFFF, FFFFFF, #FFF and FFF
+    // =========================================================
+    const normalizeHexColor = (value) => {
+      let hex = String(value || "")
+        .trim()
+        .replace(/\s+/g, "")
+        .toUpperCase();
 
-    // ✅ Base image URL from .env (IMAGEURL)
-    const rawBase = String(IMAGEURL || "").trim();
-    const baseUrl = rawBase.endsWith("/") ? rawBase.slice(0, -1) : rawBase;
+      if (!hex) {
+        return "";
+      }
 
-    const rows = await db
-      .collection("tblProductColor")
-      .aggregate([
-        { $match: { PrdColorCode: prdColorCodeStr } },
-        {
-          $lookup: {
-            from: "tblProduct",
-            localField: "ProductID",
-            foreignField: "ProductID",
-            as: "product",
-          },
-        },
-        {
-          $unwind: {
-            path: "$product",
-            preserveNullAndEmptyArrays: true,
-          },
-        },
-        {
-          $project: {
-            _id: 1,
+      if (!hex.startsWith("#")) {
+        hex = `#${hex}`;
+      }
 
-            // tblProductColor fields
-            PrdColorCodeID: 1,
-            ProductID: 1,
-            PrdColorCode: 1,
-            EnPrdColorName: 1,
-            ArPrdColorName: 1,
-            IsDataStatus: 1,
-            createdAt: 1,
-            modifiedAt: 1,
+      // Convert short HEX such as #FFF to #FFFFFF
+      if (/^#[0-9A-F]{3}$/.test(hex)) {
+        hex =
+          "#" +
+          hex
+            .slice(1)
+            .split("")
+            .map((char) => char + char)
+            .join("");
+      }
 
-            // keep if you have images in tblProductColor too (optional)
-            PrdThumb: 1,
-            PrdLarge: 1,
-            PrdBann: 1,
+      if (!/^#[0-9A-F]{6}$/.test(hex)) {
+        return "";
+      }
 
-            // tblProduct fields nested
-            ProductInfo: "$product",
-          },
-        },
-      ])
-      .toArray();
-
-    const safeJoin = (base, file) => {
-      const f = String(file || "").trim();
-      if (!base || !f) return "";
-      return `${base}/${f.replace(/^\/+/, "")}`;
+      return hex;
     };
 
-    const documents = (rows || []).map((x) => {
-      // ✅ Prefer ProductInfo.* (because your response shows images are there)
-      // Fallback to root fields if needed
+    const requestedColorCode = normalizeHexColor(PrdColorCode);
+
+    if (!String(PrdColorCode || "").trim()) {
+      return sendResponse(
+        res,
+        "PrdColorCode is required.",
+        "validation_error",
+        null
+      );
+    }
+
+    if (!requestedColorCode) {
+      return sendResponse(
+        res,
+        "Invalid PrdColorCode. Use HEX format such as #FAF9F6.",
+        "validation_error",
+        null
+      );
+    }
+
+    // =========================================================
+    // Image URL
+    // =========================================================
+    const imageRoot = `${
+      String(process.env.IMAGEURL || "").replace(/\/+$/, "")
+    }/product/images`;
+
+    const safeJoin = (base, file) => {
+      const cleanBase = String(base || "").replace(/\/+$/, "");
+      const cleanFile = String(file || "")
+        .trim()
+        .replace(/^\/+/, "");
+
+      if (!cleanBase || !cleanFile) {
+        return "";
+      }
+
+      // Already a complete URL
+      if (/^https?:\/\//i.test(cleanFile)) {
+        return cleanFile;
+      }
+
+      return `${cleanBase}/${cleanFile}`;
+    };
+
+    // =========================================================
+    // Helper: Escape text used inside regular expression
+    // =========================================================
+    const escapeRegex = (value) => {
+      return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    };
+
+    // =========================================================
+    // Helper: Convert HEX to RGB
+    // =========================================================
+    const hexToRgb = (hexColor) => {
+      const normalized = normalizeHexColor(hexColor);
+
+      if (!normalized) {
+        return null;
+      }
+
+      return {
+        red: parseInt(normalized.substring(1, 3), 16),
+        green: parseInt(normalized.substring(3, 5), 16),
+        blue: parseInt(normalized.substring(5, 7), 16),
+      };
+    };
+
+    // =========================================================
+    // Helper: Calculate RGB color distance
+    // Smaller value means a closer color
+    // Exact match = 0
+    // Maximum possible distance = approximately 441.67
+    // =========================================================
+    const calculateColorDistance = (firstHex, secondHex) => {
+      const firstColor = hexToRgb(firstHex);
+      const secondColor = hexToRgb(secondHex);
+
+      if (!firstColor || !secondColor) {
+        return Number.MAX_SAFE_INTEGER;
+      }
+
+      const redDifference = firstColor.red - secondColor.red;
+      const greenDifference = firstColor.green - secondColor.green;
+      const blueDifference = firstColor.blue - secondColor.blue;
+
+      return Math.sqrt(
+        redDifference * redDifference +
+          greenDifference * greenDifference +
+          blueDifference * blueDifference
+      );
+    };
+
+    // =========================================================
+    // Helper: Convert distance to similarity percentage
+    // =========================================================
+    const calculateSimilarityPercent = (distance) => {
+      const maximumRgbDistance = Math.sqrt(
+        255 * 255 + 255 * 255 + 255 * 255
+      );
+
+      const similarity =
+        100 - (Number(distance || 0) / maximumRgbDistance) * 100;
+
+      return Number(
+        Math.max(0, Math.min(100, similarity)).toFixed(2)
+      );
+    };
+
+    // =========================================================
+    // Helper: Fetch products for a selected color
+    // =========================================================
+    const getProductsByColorCode = async (colorCode) => {
+      const lookupProductPipeline = [
+        {
+          $match: {
+            $expr: {
+              $eq: ["$ProductID", "$$productId"],
+            },
+          },
+        },
+        {
+          $match: {
+            IsDataStatus: {
+              $ne: 0,
+            },
+          },
+        },
+      ];
+
+      /*
+       * Optional usercategory filtering:
+       *
+       * Enable this only when tblProduct contains a field named
+       * usercategory.
+       *
+       * Example:
+       *
+       * if (String(usercategory || "").trim()) {
+       *   lookupProductPipeline.push({
+       *     $match: {
+       *       usercategory: String(usercategory).trim().toUpperCase(),
+       *     },
+       *   });
+       * }
+       */
+
+      return db
+        .collection("tblProductColor")
+        .aggregate([
+          {
+            $match: {
+              PrdColorCode: {
+                $regex: `^${escapeRegex(colorCode)}$`,
+                $options: "i",
+              },
+              IsDataStatus: {
+                $ne: 0,
+              },
+              ProductID: {
+                $nin: [null, "", "undefined"],
+              },
+            },
+          },
+          {
+            $lookup: {
+              from: "tblProduct",
+              let: {
+                productId: "$ProductID",
+              },
+              pipeline: lookupProductPipeline,
+              as: "product",
+            },
+          },
+          {
+            $unwind: {
+              path: "$product",
+
+              // Do not return color records that have no real product
+              preserveNullAndEmptyArrays: false,
+            },
+          },
+          {
+            $project: {
+              _id: 1,
+
+              // tblProductColor fields
+              PCID: 1,
+              PrdColorCodeID: 1,
+              ProductID: 1,
+              PrdColorCode: 1,
+              PrdColorType: 1,
+              EnPrdColorName: 1,
+              ArPrdColorName: 1,
+              IsDataStatus: 1,
+              createdAt: 1,
+              modifiedAt: 1,
+
+              // Optional root image fields
+              PrdThumb: 1,
+              PrdLarge: 1,
+              PrdBann: 1,
+              PrdBanner: 1,
+
+              // Complete tblProduct document
+              ProductInfo: "$product",
+            },
+          },
+        ])
+        .toArray();
+    };
+
+    // =========================================================
+    // Step 1: Try exact color match
+    // =========================================================
+    let matchedColorCode = requestedColorCode;
+    let matchType = "EXACT";
+    let colorDistance = 0;
+
+    let rows = await getProductsByColorCode(requestedColorCode);
+
+    // =========================================================
+    // Step 2: Exact product color not found
+    // Find the nearest available product color
+    // =========================================================
+    if (!rows.length) {
+      const availableColors = await db
+        .collection("tblProductColor")
+        .aggregate([
+          {
+            $match: {
+              IsDataStatus: {
+                $ne: 0,
+              },
+              ProductID: {
+                $nin: [null, "", "undefined"],
+              },
+              PrdColorCode: {
+                $type: "string",
+                $regex: /^#[0-9A-Fa-f]{6}$/,
+              },
+            },
+          },
+          {
+            $lookup: {
+              from: "tblProduct",
+              let: {
+                productId: "$ProductID",
+              },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $eq: ["$ProductID", "$$productId"],
+                    },
+                    IsDataStatus: {
+                      $ne: 0,
+                    },
+                  },
+                },
+              ],
+              as: "product",
+            },
+          },
+          {
+            // Only use colors that have an existing active product
+            $match: {
+              "product.0": {
+                $exists: true,
+              },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              PrdColorCode: 1,
+            },
+          },
+          {
+            // Avoid calculating the same color many times
+            $group: {
+              _id: {
+                $toUpper: "$PrdColorCode",
+              },
+            },
+          },
+        ])
+        .toArray();
+
+      let nearestColor = null;
+      let nearestDistance = Number.MAX_SAFE_INTEGER;
+
+      for (const colorDocument of availableColors) {
+        const candidateColorCode = normalizeHexColor(
+          colorDocument?._id
+        );
+
+        if (!candidateColorCode) {
+          continue;
+        }
+
+        const currentDistance = calculateColorDistance(
+          requestedColorCode,
+          candidateColorCode
+        );
+
+        if (currentDistance < nearestDistance) {
+          nearestDistance = currentDistance;
+          nearestColor = candidateColorCode;
+        }
+      }
+
+      if (!nearestColor) {
+        return sendResponse(
+          res,
+          "No product colors are available.",
+          null,
+          []
+        );
+      }
+
+      matchedColorCode = nearestColor;
+      colorDistance = Number(nearestDistance.toFixed(2));
+      matchType = "NEAREST";
+
+      rows = await getProductsByColorCode(matchedColorCode);
+    }
+
+    // =========================================================
+    // Step 3: Build final documents and image URLs
+    // =========================================================
+    const similarityPercent = calculateSimilarityPercent(
+      colorDistance
+    );
+
+    const documents = rows.map((item) => {
       const prdThumb =
-        x?.ProductInfo?.PrdThumb ?? x?.PrdThumb ?? "";
+        item?.ProductInfo?.PrdThumb ??
+        item?.PrdThumb ??
+        "";
 
       const prdLarge =
-        x?.ProductInfo?.PrdLarge ?? x?.PrdLarge ?? "";
+        item?.ProductInfo?.PrdLarge ??
+        item?.PrdLarge ??
+        "";
 
-      // IMPORTANT: tblProduct uses PrdBanner (not PrdBann)
       const prdBanner =
-        x?.ProductInfo?.PrdBanner ??
-        x?.ProductInfo?.PrdBann ??
-        x?.PrdBanner ??
-        x?.PrdBann ??
+        item?.ProductInfo?.PrdBanner ??
+        item?.ProductInfo?.PrdBann ??
+        item?.PrdBanner ??
+        item?.PrdBann ??
         "";
 
       return {
-        ...x,
+        ...item,
 
-        // ✅ required names (your requirement)
-        PrdThumbUrl: safeJoin(baseUrl, prdThumb),
-        PrdLargeUrl: safeJoin(baseUrl, prdLarge),
-        PrdBannerUrl: safeJoin(baseUrl, prdBanner),
+        // Matching information
+        MatchType: matchType,
+        IsExactMatch: matchType === "EXACT",
+        RequestedColorCode: requestedColorCode,
+        MatchedColorCode: matchedColorCode,
+        ColorDistance: colorDistance,
+        SimilarityPercent: similarityPercent,
+
+        // Complete image URLs
+        PrdThumbUrl: safeJoin(imageRoot, prdThumb),
+        PrdLargeUrl: safeJoin(imageRoot, prdLarge),
+        PrdBannerUrl: safeJoin(imageRoot, prdBanner),
       };
     });
 
-    return sendResponse(
-      res,
-      "Product colors + product data fetched successfully.",
-      null,
-      documents
-    );
+    const message =
+      matchType === "EXACT"
+        ? "Exact product color match fetched successfully."
+        : `Exact color was not found. Nearest available color ${matchedColorCode} was selected.`;
+
+    return sendResponse(res, message, null, documents);
   } catch (error) {
-    console.log(error);
+    console.error(
+      "[getprdcolormatchlist] Error:",
+      error
+    );
+
     next(error);
   }
 };
-
  
  
 
