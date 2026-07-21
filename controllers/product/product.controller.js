@@ -725,16 +725,7 @@ exports.Oldgetcategoryproductlist = async (req, res, next) => {
     return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
-
-
  
-
- 
- 
- 
-   
- 
-
  
 exports.delproductByID = async (req, res, next) => {
   const { ProductID } = req.body;
@@ -764,3 +755,187 @@ exports.delproductByID = async (req, res, next) => {
   }
 };
 
+
+
+exports.delproductimage = async (req, res, next) => {
+  try {
+    const db = await connectToMongoDB();
+    const collection = db.collection("tblprdimagegallery");
+
+    const { PIID, ProductID } = req.body || {};
+
+    // Validate required fields
+    if (!PIID || String(PIID).trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "PIID is required.",
+      });
+    }
+
+    if (!ProductID || String(ProductID).trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "ProductID is required.",
+      });
+    }
+
+    // Delete the image record
+    const deleteResult = await collection.deleteOne({
+      PIID: String(PIID).trim(),
+      ProductID: String(ProductID).trim(),
+    });
+
+    if (deleteResult.deletedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Product image not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Product image deleted successfully.",
+    });
+  } catch (error) {
+    console.error("Delete Product Image Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error.",
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : undefined,
+    });
+  }
+};
+ 
+ exports.addproductimage = async (req, res, next) => {
+  try {
+    const db = await connectToMongoDB();
+    const collection = db.collection("tblprdimagegallery");
+
+    const {
+       
+      ProductImageName,
+      ProductID,
+      CreatedBy,
+      ModifyBy,
+      IsDataStatus,
+    } = req.body || {};
+
+    
+
+    if (!ProductID || String(ProductID).trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "ProductID is required.",
+      });
+    }
+
+    if (!ProductImageName || String(ProductImageName).trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "ProductImageName is required.",
+      });
+    }
+
+    // Check whether the image record already exists
+    const existingImage = await collection.findOne({
+      PIID: String(PIID).trim(),
+    });
+
+    if (existingImage) {
+      return res.status(409).json({
+        success: false,
+        message: "PIID already exists.",
+      });
+    }
+
+    const currentDate = new Date();
+
+    const imageData = {
+      PIID:generateUniqueId(),
+      ProductImageName: String(ProductImageName).trim(),
+      ProductID: String(ProductID).trim(),
+      CreatedDate: currentDate,
+      CreatedBy: CreatedBy ? String(CreatedBy).trim() : "",
+      ModifyBy: ModifyBy ? String(ModifyBy).trim() : "",
+      ModifyDate: currentDate,
+      IsDataStatus: 1,
+    };
+
+    const insertResult = await collection.insertOne(imageData);
+
+    return res.status(201).json({
+      success: true,
+      message: "Product image added successfully.",
+      data: {
+        ...imageData,
+        _id: insertResult.insertedId,
+      },
+    });
+  } catch (error) {
+    console.error("Add Product Image Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error.",
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : undefined,
+    });
+  }
+};
+ 
+   
+exports.getproductimage = async (req, res, next) => {
+  try {
+    const db = await connectToMongoDB();
+    const collection = db.collection("tblprdimagegallery");
+
+    const { ProductID } = req.body || {};
+
+    // Validate ProductID
+    if (!ProductID || String(ProductID).trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "ProductID is required.",
+      });
+    }
+
+    // Get all images for the product
+    const images = await collection
+      .find({
+        ProductID: String(ProductID).trim(),
+      })
+      .toArray();
+
+    if (images.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No product images found.",
+        data: [],
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Product images retrieved successfully.",
+      total: images.length,
+      data: images,
+    });
+  } catch (error) {
+    console.error("Get Product Images Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error.",
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : undefined,
+    });
+  }
+};

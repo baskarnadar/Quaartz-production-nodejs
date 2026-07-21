@@ -32,4 +32,7 @@ router.post("/createProductSize", protectAPI, product.createProductSize);
 router.post("/updateProductID", protectAPI, product.updateProductID);
 router.post("/delproductByID", protectAPI, product.delproductByID);
 
+router.post("/addproductimage", protectAPI, product.addproductimage);
+router.post("/delproductimage", protectAPI, product.delproductimage);
+router.post("/getproductimage", protectAPI, product.getproductimage);
 module.exports = router;
