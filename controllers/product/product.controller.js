@@ -911,12 +911,24 @@ exports.getproductimage = async (req, res, next) => {
       .find({
         ProductID: String(ProductID).trim(),
       })
+      .sort({ CreatedDate: -1 })
       .toArray();
 
+    // Build full image URL for every gallery image
+    const productImageBaseUrl =
+      process.env.IMAGEURL + "Product/";
+
+    for (const image of images) {
+      image.ProductImageNameUrl =
+        productImageBaseUrl + image.ProductImageName;
+    }
+
+    // Return 200 with empty array when no images exist
     if (images.length === 0) {
-      return res.status(404).json({
-        success: false,
+      return res.status(200).json({
+        success: true,
         message: "No product images found.",
+        total: 0,
         data: [],
       });
     }
