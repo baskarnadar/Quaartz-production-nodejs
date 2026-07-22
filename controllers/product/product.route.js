@@ -34,5 +34,5 @@ router.post("/delproductByID", protectAPI, product.delproductByID);
 
 router.post("/addproductimage", protectAPI, product.addproductimage);
 router.post("/delproductimage", protectAPI, product.delproductimage);
-router.post("/getproductimage", protectAPI, product.getproductimage);
+router.post("/getproductimage",   product.getproductimage);
 module.exports = router;
