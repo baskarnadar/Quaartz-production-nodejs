@@ -916,7 +916,7 @@ exports.getproductimage = async (req, res, next) => {
 
     // Build full image URL for every gallery image
     const productImageBaseUrl =
-      process.env.IMAGEURL + "Product/";
+      process.env.IMAGEURL + "product/images/";
 
     for (const image of images) {
       image.ProductImageNameUrl =
