@@ -816,15 +816,12 @@ exports.delproductimage = async (req, res, next) => {
     const collection = db.collection("tblprdimagegallery");
 
     const {
-       
       ProductImageName,
       ProductID,
       CreatedBy,
       ModifyBy,
       IsDataStatus,
     } = req.body || {};
-
-    
 
     if (!ProductID || String(ProductID).trim() === "") {
       return res.status(400).json({
@@ -840,29 +837,37 @@ exports.delproductimage = async (req, res, next) => {
       });
     }
 
-    // Check whether the image record already exists
+    const productIDValue = String(ProductID).trim();
+    const productImageNameValue = String(ProductImageName).trim();
+
+    // Optional duplicate check:
+    // Prevent saving the same image name twice for the same product.
     const existingImage = await collection.findOne({
-      PIID: String(PIID).trim(),
+      ProductID: productIDValue,
+      ProductImageName: productImageNameValue,
     });
 
     if (existingImage) {
       return res.status(409).json({
         success: false,
-        message: "PIID already exists.",
+        message: "This product image already exists.",
       });
     }
 
     const currentDate = new Date();
 
     const imageData = {
-      PIID:generateUniqueId(),
-      ProductImageName: String(ProductImageName).trim(),
-      ProductID: String(ProductID).trim(),
+      PIID: generateUniqueId(),
+      ProductImageName: productImageNameValue,
+      ProductID: productIDValue,
       CreatedDate: currentDate,
       CreatedBy: CreatedBy ? String(CreatedBy).trim() : "",
       ModifyBy: ModifyBy ? String(ModifyBy).trim() : "",
       ModifyDate: currentDate,
-      IsDataStatus: 1,
+      IsDataStatus:
+        IsDataStatus !== undefined && IsDataStatus !== null
+          ? Number(IsDataStatus)
+          : 1,
     };
 
     const insertResult = await collection.insertOne(imageData);
@@ -881,14 +886,10 @@ exports.delproductimage = async (req, res, next) => {
     return res.status(500).json({
       success: false,
       message: "Internal server error.",
-      error:
-        process.env.NODE_ENV === "development"
-          ? error.message
-          : undefined,
+      error: error.message,
     });
   }
 };
- 
    
 exports.getproductimage = async (req, res, next) => {
   try {
