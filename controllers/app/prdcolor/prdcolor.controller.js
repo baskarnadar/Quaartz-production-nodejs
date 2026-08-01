@@ -25,7 +25,7 @@ exports.getmaincolor = async (req, res, next) => {
   }
 };
 
-exports.getsubcolor = async (req, res, next) => {
+ exports.getsubcolor = async (req, res, next) => {
   try {
     const { MainColorCodeID } = req.body || {};
     const db = await connectToMongoDB();
@@ -39,13 +39,68 @@ exports.getsubcolor = async (req, res, next) => {
       );
     }
 
-    // ✅ Get all sub colors linked to the given MainColorCodeID
+    // Get all sub colors linked to the given MainColorCodeID
     const documents = await db
       .collection("tblSubColorCode")
-      .find({ MainColorCodeID: String(MainColorCodeID) })
+      .find(
+        {
+          MainColorCodeID: String(MainColorCodeID),
+          IsDataStatus: 1,
+        },
+        {
+          projection: {
+            _id: 0,
+            SubColorCodeID: 1,
+            MainColorCodeID: 1,
+            SubColorCode: 1,
+            SubColorType: 1,
+
+            // Return ColorName as both English & Arabic names
+            EnSubColorName: "$ColorName",
+            ArSubColorName: "$ColorName",
+
+            ColorID: 1,
+            MainProductColor: 1,
+            SubProductColor: 1,
+            SpecialProductColor: 1,
+            SpecialColorCategory: 1,
+            ColorCode: 1,
+            ColorName: 1,
+            HexValue: 1,
+            Red: 1,
+            Green: 1,
+            Blue: 1,
+            Hue: 1,
+            SaturationPercent: 1,
+            BrightnessPercent: 1,
+            MainSort: 1,
+            CollectionSort: 1,
+            SourceSheet: 1,
+            SourceRow: 1,
+            ClassificationStatus: 1,
+            createdAt: 1,
+            modifiedAt: 1,
+            createdBy: 1,
+            updatedBy: 1,
+            IsDataStatus: 1,
+          },
+        }
+      )
       .toArray();
 
-    return sendResponse(res, "Sub colors fetched successfully.", null, documents);
+    // Override the names with ColorName
+    const result = documents.map((item) => ({
+      ...item,
+      EnSubColorName: item.ColorName,
+      ArSubColorName: item.ColorName,
+    }));
+
+    return sendResponse(
+      res,
+      "Sub colors fetched successfully.",
+      null,
+      result
+    );
   } catch (error) {
     console.log(error);
     next(error);
