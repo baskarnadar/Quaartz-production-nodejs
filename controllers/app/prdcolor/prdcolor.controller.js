@@ -30,7 +30,7 @@ exports.getmaincolor = async (req, res, next) => {
     const { MainColorCodeID } = req.body || {};
     const db = await connectToMongoDB();
 
-    if (!MainColorCodeID) {
+    if (!MainColorCodeID || String(MainColorCodeID).trim() === "") {
       return sendResponse(
         res,
         "MainColorCodeID is required.",
@@ -39,70 +39,36 @@ exports.getmaincolor = async (req, res, next) => {
       );
     }
 
-    // Get all sub colors linked to the given MainColorCodeID
     const documents = await db
       .collection("tblSubColorCode")
-      .find(
+      .aggregate([
         {
-          MainColorCodeID: String(MainColorCodeID),
-          IsDataStatus: 1,
+          $match: {
+            MainColorCodeID: String(MainColorCodeID).trim(),
+          },
         },
         {
-          projection: {
-            _id: 0,
-            SubColorCodeID: 1,
-            MainColorCodeID: 1,
-            SubColorCode: 1,
-            SubColorType: 1,
-
-            // Return ColorName as both English & Arabic names
-            EnSubColorName: "$ColorName",
-            ArSubColorName: "$ColorName",
-
-            ColorID: 1,
-            MainProductColor: 1,
-            SubProductColor: 1,
-            SpecialProductColor: 1,
-            SpecialColorCategory: 1,
-            ColorCode: 1,
-            ColorName: 1,
-            HexValue: 1,
-            Red: 1,
-            Green: 1,
-            Blue: 1,
-            Hue: 1,
-            SaturationPercent: 1,
-            BrightnessPercent: 1,
-            MainSort: 1,
-            CollectionSort: 1,
-            SourceSheet: 1,
-            SourceRow: 1,
-            ClassificationStatus: 1,
-            createdAt: 1,
-            modifiedAt: 1,
-            createdBy: 1,
-            updatedBy: 1,
-            IsDataStatus: 1,
+          $set: {
+            // Display ColorCode data in both fields
+            EnSubColorName: {
+              $ifNull: ["$ColorCode", ""],
+            },
+            ArSubColorName: {
+              $ifNull: ["$ColorCode", ""],
+            },
           },
-        }
-      )
+        },
+      ])
       .toArray();
-
-    // Override the names with ColorName
-    const result = documents.map((item) => ({
-      ...item,
-      EnSubColorName: item.ColorName,
-      ArSubColorName: item.ColorName,
-    }));
 
     return sendResponse(
       res,
       "Sub colors fetched successfully.",
       null,
-      result
+      documents
     );
   } catch (error) {
-    console.log(error);
+    console.error("Get Sub Color Error:", error);
     next(error);
   }
 };
