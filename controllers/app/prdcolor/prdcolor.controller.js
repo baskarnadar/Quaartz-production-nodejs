@@ -26,6 +26,7 @@ exports.getmaincolor = async (req, res, next) => {
 };
 
  exports.getsubcolor = async (req, res, next) => {
+   
   try {
     const { MainColorCodeID } = req.body || {};
     const db = await connectToMongoDB();
@@ -41,31 +42,22 @@ exports.getmaincolor = async (req, res, next) => {
 
     const documents = await db
       .collection("tblSubColorCode")
-      .aggregate([
-        {
-          $match: {
-            MainColorCodeID: String(MainColorCodeID).trim(),
-          },
-        },
-        {
-          $set: {
-            // Display ColorCode data in both fields
-            EnSubColorName: {
-              $ifNull: ["$ColorCode", ""],
-            },
-            ArSubColorName: {
-              $ifNull: ["$ColorCode", ""],
-            },
-          },
-        },
-      ])
+      .find({
+        MainColorCodeID: String(MainColorCodeID).trim(),
+      })
       .toArray();
+
+    const updatedDocuments = documents.map((item) => ({
+      ...item,
+      EnSubColorName: item.ColorCode || "",
+      ArSubColorName: item.ColorCode || "",
+    }));
 
     return sendResponse(
       res,
       "Sub colors fetched successfully.",
       null,
-      documents
+      updatedDocuments
     );
   } catch (error) {
     console.error("Get Sub Color Error:", error);
@@ -73,32 +65,7 @@ exports.getmaincolor = async (req, res, next) => {
   }
 };
 
-exports.getsubcolor = async (req, res, next) => {
-  try {
-    const { MainColorCodeID } = req.body || {};
-    const db = await connectToMongoDB();
-
-    if (!MainColorCodeID) {
-      return sendResponse(
-        res,
-        "MainColorCodeID is required.",
-        "validation_error",
-        null
-      );
-    }
-
-    // ✅ Get all sub colors linked to the given MainColorCodeID
-    const documents = await db
-      .collection("tblSubColorCode")
-      .find({ MainColorCodeID: String(MainColorCodeID) })
-      .toArray();
-
-    return sendResponse(res, "Sub colors fetched successfully.", null, documents);
-  } catch (error) {
-    console.log(error);
-    next(error);
-  }
-};
+ 
 
  
  exports.getprdcolormatchlist = async (req, res, next) => {
