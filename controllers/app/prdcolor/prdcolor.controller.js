@@ -26,7 +26,6 @@ exports.getmaincolor = async (req, res, next) => {
 };
 
  exports.getsubcolor = async (req, res, next) => {
-   
   try {
     const { MainColorCodeID } = req.body || {};
     const db = await connectToMongoDB();
@@ -45,6 +44,7 @@ exports.getmaincolor = async (req, res, next) => {
       .find({
         MainColorCodeID: String(MainColorCodeID).trim(),
       })
+      .sort({ OrderID: 1 }) // Sort by OrderID ASC
       .toArray();
 
     const updatedDocuments = documents.map((item) => ({
