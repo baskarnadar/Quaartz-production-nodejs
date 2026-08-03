@@ -11,20 +11,28 @@ function sendResponse(res, message, error, results) {
 }
 
 
-exports.getmaincolor = async (req, res, next) => {
+ exports.getmaincolor = async (req, res, next) => {
   try {
     const db = await connectToMongoDB();
 
-    // ✅ Get all data from tblMainColorCode (no ProductID filter)
-    const documents = await db.collection("tblMainColorCode").find({}).toArray();
+    // Get all data ordered by OrderID (Ascending)
+    const documents = await db
+      .collection("tblMainColorCode")
+      .find({})
+      .sort({ OrderID: 1 })
+      .toArray();
 
-    return sendResponse(res, "Color fetched successfully.", null, documents);
+    return sendResponse(
+      res,
+      "Color fetched successfully.",
+      null,
+      documents
+    );
   } catch (error) {
     console.log(error);
     next(error);
   }
 };
-
  exports.getsubcolor = async (req, res, next) => {
   try {
     const { MainColorCodeID } = req.body || {};
