@@ -249,3 +249,63 @@ exports.updateMainColor = async (req, res, next) => {
     next(error);
   }
 };
+ exports.changeorder = async (req, res, next) => {
+  try {
+    const db = await connectToMongoDB();
+
+    const items = req.body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return sendResponse(
+        res,
+        "Request body must be an array.",
+        "validation_error",
+        null
+      );
+    }
+
+    const bulkOps = [];
+
+    for (const item of items) {
+      const MainColorCodeID = String(item.MainColorCodeID || "").trim();
+      const OrderID = Number(item.OrderID);
+
+      if (!MainColorCodeID || isNaN(OrderID)) {
+        continue;
+      }
+
+      bulkOps.push({
+        updateOne: {
+          filter: { MainColorCodeID },
+          update: {
+            $set: {
+              OrderID,
+              ModifyDate: new Date(),
+            },
+          },
+        },
+      });
+    }
+
+    if (!bulkOps.length) {
+      return sendResponse(
+        res,
+        "No valid records found.",
+        "validation_error",
+        null
+      );
+    }
+
+    await db.collection("tblMainColorCode").bulkWrite(bulkOps);
+
+    return sendResponse(
+      res,
+      "Order updated successfully.",
+      null,
+      null
+    );
+  } catch (error) {
+    console.error("Change Order Error:", error);
+    next(error);
+  }
+};
