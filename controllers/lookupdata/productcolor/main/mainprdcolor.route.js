@@ -8,6 +8,6 @@ router.post("/editMainColor",protectAPI, Maincolor.editMainColor);
 router.post("/addMainColor", protectAPI,Maincolor.addMainColor);
 router.post("/delMainColor", protectAPI,Maincolor.delMainColor);
 router.post("/updateMainColor", protectAPI,Maincolor.updateMainColor);
-router.post("/changeorder",protectAPI, prdcolor.changeorder);
+router.post("/changeorder",protectAPI, Maincolor.changeorder);
 module.exports = router;
 
