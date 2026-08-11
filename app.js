@@ -40,6 +40,8 @@ var SubMenuRoute = require('./controllers/admin/submenu/submenu.route');
 
 /* ✅ SETTINGS ROUTE */
 var SettingRoute = require('./controllers/setting/setting.route');
+var PushMsgRoute = require('./controllers/pushmsg/pushmsg.route');
+
 
 /* ✅ LOOKUPDATA PRODUCT COLOR ROUTES */
 var MainPrdColorRoute = require('./controllers/lookupdata/productcolor/main/mainprdcolor.route');
@@ -121,6 +123,7 @@ app.use('/api/lookupdata/productcolor/sub', SubPrdColorRoute);
 
 /* ✅ SETTINGS */
 app.use('/api/setting', SettingRoute);
+app.use('/api/pushmsg', PushMsgRoute);
 
 // -------------------- MongoDB --------------------
 connectToMongoDB()
