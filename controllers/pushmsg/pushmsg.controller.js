@@ -3,7 +3,7 @@ const { connectToMongoDB } = require("../../database/mongodb");
 const crypto = require("crypto");
 
 // ✅ Use centralized initialized Firebase instance
-const admin = require("../../config/firebase");
+const firebase = require("../../config/firebase");
 
 const { v4: uuidv4 } = require("uuid");
 
