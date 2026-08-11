@@ -22,17 +22,23 @@ function sendResponse(res, message, error, results) {
  exports.sendmsg = async (req, res, next) => {
   console.log("📩 Incoming Request Body:", req.body);
 
-  let tokens = req.body?.token; // string or array
+  let tokens = req.body?.token;
   const title = req.body?.title;
   const body = req.body?.body;
   const data = req.body?.data || {};
 
   try {
+    // =====================================================
+    // VALIDATION
+    // =====================================================
     if (!tokens) {
       return sendResponse(
         res,
         "token is required.",
-        { type: "validation_error", receivedBody: req.body },
+        {
+          type: "validation_error",
+          receivedBody: req.body,
+        },
         null
       );
     }
@@ -41,33 +47,82 @@ function sendResponse(res, message, error, results) {
       return sendResponse(
         res,
         "title and body are required.",
-        { type: "validation_error", receivedBody: req.body },
+        {
+          type: "validation_error",
+          receivedBody: req.body,
+        },
         null
       );
     }
 
+    // =====================================================
+    // CONVERT SINGLE TOKEN TO ARRAY
+    // =====================================================
     if (!Array.isArray(tokens)) {
       tokens = [tokens];
     }
 
-    const sendPromises = tokens.map((tokenVal) => {
+    // Remove empty tokens
+    tokens = tokens
+      .map((token) => String(token || "").trim())
+      .filter((token) => token.length > 0);
+
+    if (tokens.length === 0) {
+      return sendResponse(
+        res,
+        "No valid FCM tokens found.",
+        {
+          type: "validation_error",
+        },
+        null
+      );
+    }
+
+    // =====================================================
+    // CONVERT DATA VALUES TO STRING
+    // Firebase requires string values
+    // =====================================================
+    const firebaseData = Object.fromEntries(
+      Object.entries(data).map(([key, value]) => [
+        String(key),
+        String(value),
+      ])
+    );
+
+    // =====================================================
+    // SEND PUSH NOTIFICATION
+    // =====================================================
+    const sendPromises = tokens.map(async (tokenVal) => {
       const message = {
-        token: String(tokenVal).trim(),
+        token: tokenVal,
+
         notification: {
           title: String(title),
           body: String(body),
         },
-        data: Object.fromEntries(
-          Object.entries(data).map(([key, value]) => [key, String(value)])
-        ),
+
+        data: firebaseData,
+
+        // =================================================
+        // ANDROID
+        // =================================================
         android: {
           priority: "high",
+
           notification: {
             sound: "default",
             channelId: "high_importance_channel",
           },
         },
+
+        // =================================================
+        // IOS
+        // =================================================
         apns: {
+          headers: {
+            "apns-priority": "10",
+          },
+
           payload: {
             aps: {
               sound: "default",
@@ -77,50 +132,96 @@ function sendResponse(res, message, error, results) {
         },
       };
 
-      console.log("🚀 Sending FCM message:", JSON.stringify(message, null, 2));
+      console.log(
+        "🚀 Sending FCM message:",
+        JSON.stringify(message, null, 2)
+      );
 
-      return admin
-        .messaging()
-        .send(message)
-        .then((resp) => ({
+      try {
+        // =================================================
+        // IMPORTANT FIX
+        // firebase.messaging is already getMessaging()
+        // =================================================
+        const response = await firebase.messaging.send(message);
+
+        console.log(
+          "✅ FCM message sent successfully:",
+          response
+        );
+
+        return {
           token: tokenVal,
           success: true,
-          response: resp,
-        }))
-        .catch((err) => ({
+          response: response,
+        };
+      } catch (err) {
+        console.error(
+          "❌ FCM send failed:",
+          err
+        );
+
+        return {
           token: tokenVal,
           success: false,
+
           error: {
             code: err.code || null,
             message: err.message || String(err),
           },
-        }));
+        };
+      }
     });
 
+    // =====================================================
+    // WAIT FOR ALL NOTIFICATIONS
+    // =====================================================
     const results = await Promise.all(sendPromises);
 
-    const successCount = results.filter((r) => r.success).length;
-    const failureCount = results.length - successCount;
+    const successCount = results.filter(
+      (r) => r.success
+    ).length;
+
+    const failureCount =
+      results.length - successCount;
 
     console.log(
       "✅ Notification send results:",
-      JSON.stringify({ successCount, failureCount, results }, null, 2)
+      JSON.stringify(
+        {
+          successCount,
+          failureCount,
+          results,
+        },
+        null,
+        2
+      )
     );
 
+    // =====================================================
+    // RESPONSE
+    // =====================================================
     return sendResponse(
       res,
       "Notification(s) processed.",
       null,
-      { successCount, failureCount, results }
+      {
+        successCount,
+        failureCount,
+        results,
+      }
     );
+
   } catch (error) {
-    console.error("❌ Firebase Error FULL:", error);
+    console.error(
+      "❌ Firebase Error FULL:",
+      error
+    );
 
     return sendResponse(
       res,
       error.message || "Firebase send error",
       {
-        code: error.code,
+        code: error.code || null,
         info: error,
       },
       null
