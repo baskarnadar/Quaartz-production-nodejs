@@ -58,36 +58,31 @@ exports.gettrendcolorlist = async (req, res, next) => {
   }
 };
 
-// ------------------------------------------------------------
-// FETCH FOR EDIT
-// Frontend sends TrendColorCodeID
-// ------------------------------------------------------------
-exports.edittrendcolor = async (req, res, next) => {
+exports.gettrendcolorbyid = async (req, res, next) => {
   try {
-    const { TrendColorCodeID } = req.body || {};
+    const { TrendColorCodeID } = req.body;
 
     if (!TrendColorCodeID) {
       return sendResponse(
         res,
         "TrendColorCodeID is required.",
-        "validation_error",
+        true,
         null
       );
     }
 
     const db = await connectToMongoDB();
+    const collection = db.collection("tblTrendColorCode");
 
-    const existingData = await db
-      .collection("tblTrendColorCode")
-      .findOne({
-        TrendColorCodeID: String(TrendColorCodeID),
-      });
+    const document = await collection.findOne({
+      TrendColorCodeID: TrendColorCodeID.trim(),
+    });
 
-    if (!existingData) {
+    if (!document) {
       return sendResponse(
         res,
         "Trend color not found.",
-        "not_found",
+        true,
         null
       );
     }
@@ -96,14 +91,109 @@ exports.edittrendcolor = async (req, res, next) => {
       res,
       "Trend color fetched successfully.",
       null,
-      existingData
+      document
     );
   } catch (error) {
-    console.error("editTrendColor error:", error);
+    console.log(error);
     next(error);
   }
 };
 
+
+// ------------------------------------------------------------
+// FETCH FOR EDIT
+// Frontend sends TrendColorCodeID
+// ------------------------------------------------------------
+ exports.edittrendcolor = async (req, res, next) => {
+  try {
+    const {
+      TrendColorCodeID,
+      TrendColorCode,
+      TrendColorType,
+      EnTrendColorName,
+      ArTrendColorName,
+      ModifyBy,
+    } = req.body || {};
+
+    if (!String(TrendColorCodeID || '').trim()) {
+      return sendResponse(
+        res,
+        'TrendColorCodeID is required.',
+        true,
+        null
+      );
+    }
+
+    if (
+      !String(TrendColorCode || '').trim() ||
+      !String(TrendColorType || '').trim() ||
+      !String(EnTrendColorName || '').trim() ||
+      !String(ArTrendColorName || '').trim()
+    ) {
+      return sendResponse(
+        res,
+        'All trend color fields are required.',
+        true,
+        null
+      );
+    }
+
+    const db = await connectToMongoDB();
+    const collection = db.collection('tblTrendColorCode');
+
+    const filter = {
+      TrendColorCodeID: String(TrendColorCodeID).trim(),
+    };
+
+    const existingData = await collection.findOne(filter);
+
+    if (!existingData) {
+      return sendResponse(
+        res,
+        'Trend color not found.',
+        true,
+        null
+      );
+    }
+
+    const updateData = {
+      TrendColorCode: String(TrendColorCode).trim(),
+      TrendColorType: String(TrendColorType).trim(),
+      EnTrendColorName: String(EnTrendColorName).trim(),
+      ArTrendColorName: String(ArTrendColorName).trim(),
+      updatedBy: String(ModifyBy || 'USER').trim(),
+      modifiedAt: new Date(),
+    };
+
+    const updateResult = await collection.updateOne(
+      filter,
+      {
+        $set: updateData,
+      }
+    );
+
+    if (updateResult.matchedCount === 0) {
+      return sendResponse(
+        res,
+        'Trend color not found.',
+        true,
+        null
+      );
+    }
+
+    const updatedDocument = await collection.findOne(filter);
+
+    return sendResponse(
+      res,
+      'Trend color updated successfully.',
+      null,
+      updatedDocument
+    );
+  } catch (error) {
+    console.error('edittrendcolor error:', error);
+    next(error);
+  }
+};
 // ------------------------------------------------------------
 // ADD TREND COLOR
 // ------------------------------------------------------------

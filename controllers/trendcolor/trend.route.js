@@ -5,6 +5,8 @@ const { protectAPI } = require("../middleware/auth");
 
 // Trend Color Product
 
+
+router.post("/gettrendcolorbyid", protectAPI, Trendcolor.gettrendcolorbyid);
 router.post("/getalltrendcolorlist",  Trendcolor.getalltrendcolorlist);
 router.post("/gettrendcolorlist", protectAPI, Trendcolor.gettrendcolorlist);
 router.post("/edittrendcolor", protectAPI, Trendcolor.edittrendcolor);
