@@ -28,6 +28,7 @@ var CategoryRoute = require('./controllers/category/category.route');
 var DashBoardRoute = require('./controllers/dashboard/dashboard.route');
 var OfferRoute = require('./controllers/offer/offer.route');
 var CityRoute = require('./controllers/lookupdata/city/city.route');
+var YearRoute = require('./controllers/lookupdata/sgyear/year.route');
 
 /* ✅ FIXED LOWERCASE ROUTES */
 var Splprdcolor = require('./controllers/lookupdata/splprdcolor/splprdcolor.route');
@@ -46,6 +47,9 @@ var PushMsgRoute = require('./controllers/pushmsg/pushmsg.route');
 /* ✅ LOOKUPDATA PRODUCT COLOR ROUTES */
 var MainPrdColorRoute = require('./controllers/lookupdata/productcolor/main/mainprdcolor.route');
 var SubPrdColorRoute = require('./controllers/lookupdata/productcolor/sub/subprdcolor.route');
+
+//Trend
+var trendcolorRoute = require('./controllers/trendcolor/trend.route');
 
 // App Product Color
 var AppPrdColor = require('./controllers/app/prdcolor/prdcolor.route');
@@ -107,6 +111,7 @@ app.use('/api/mainmenu', MainMenuRoute);
 app.use('/api/submenu', SubMenuRoute);
 
 app.use('/api/lookupdata/city', CityRoute);
+app.use('/api/lookupdata/sgyear', YearRoute);
 
 /* ✅ APP PRODUCT COLOR */
 app.use('/api/app/prdcolor', AppPrdColor);
@@ -118,6 +123,8 @@ app.use('/api/lookupdata/splprdcolor', Splprdcolor);
 app.use('/api/lookupdata/splprdcategory', Splprdcategory);
 
 /* ✅ LOOKUPDATA PRODUCT COLOR */
+
+app.use('/api/trendcolor', trendcolorRoute);
 app.use('/api/lookupdata/productcolor/main', MainPrdColorRoute);
 app.use('/api/lookupdata/productcolor/sub', SubPrdColorRoute);
 
