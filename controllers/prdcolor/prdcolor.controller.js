@@ -59,7 +59,7 @@ exports.getprdcolorbyid = async (req, res, next) => {
 
       if (ColorKeyCode !== "") {
         const specialColors = await specialColorCollection
-          .find({ ColorKeyCode: ColorKeyCode })
+          .find({ ColorKeyCode })
           .toArray();
 
         if (specialColors.length > 0) {
@@ -69,20 +69,28 @@ exports.getprdcolorbyid = async (req, res, next) => {
               EnPrdColorName: spColor.EnColorName || "",
               ArPrdColorName: spColor.ArColorName || "",
               PrdColorCode: spColor.SplColorCodeID || "",
-              ProductID: ProductID,
+              ProductID,
               PrdColorCodeID: spColor.SplColorCodeIDPrKey || "",
 
-              // From tblPrdSpecialColor
+              // Added to response
               SplColorCodeID: spColor.SplColorCodeID || "",
               SplColorCodeIDPrKey: spColor.SplColorCodeIDPrKey || "",
               ColorKeyCode: spColor.ColorKeyCode || ColorKeyCode,
             });
           });
         } else {
-          finalColors.push(color);
+          finalColors.push({
+            ...color,
+            SplColorCodeID: color.SplColorCodeID || "",
+            ColorKeyCode: color.ColorKeyCode || "",
+          });
         }
       } else {
-        finalColors.push(color);
+        finalColors.push({
+          ...color,
+          SplColorCodeID: color.SplColorCodeID || "",
+          ColorKeyCode: color.ColorKeyCode || "",
+        });
       }
     }
 
