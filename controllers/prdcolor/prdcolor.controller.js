@@ -48,7 +48,6 @@ exports.getprdcolorbyid = async (req, res, next) => {
     const productColorCollection = db.collection("tblProductColor");
     const specialColorCollection = db.collection("tblPrdSpecialColor");
 
-    // ✅ Get all product colors
     const productColors = await productColorCollection
       .find({ ProductID: ProductID })
       .toArray();
@@ -58,7 +57,6 @@ exports.getprdcolorbyid = async (req, res, next) => {
     for (const color of productColors) {
       const ColorKeyCode = String(color.ColorKeyCode || "").trim();
 
-      // ✅ If ColorKeyCode exists, expand from tblPrdSpecialColor
       if (ColorKeyCode !== "") {
         const specialColors = await specialColorCollection
           .find({ ColorKeyCode: ColorKeyCode })
@@ -67,22 +65,23 @@ exports.getprdcolorbyid = async (req, res, next) => {
         if (specialColors.length > 0) {
           specialColors.forEach((spColor) => {
             finalColors.push({
-              _id: spColor._id, // from tblPrdSpecialColor
+              _id: spColor._id,
               EnPrdColorName: spColor.EnColorName || "",
               ArPrdColorName: spColor.ArColorName || "",
-              PrdColorCode: spColor.SplColorCodeID || "", // color code
-              ProductID: ProductID, // keep same product
-              PrdColorCodeID: spColor.SplColorCodeIDPrKey || "", // required
-              SplColorCodeIDPrKey: spColor.SplColorCodeIDPrKey || "", // ✅ Added
+              PrdColorCode: spColor.SplColorCodeID || "",
+              ProductID: ProductID,
+              PrdColorCodeID: spColor.SplColorCodeIDPrKey || "",
+
+              // From tblPrdSpecialColor
+              SplColorCodeID: spColor.SplColorCodeID || "",
+              SplColorCodeIDPrKey: spColor.SplColorCodeIDPrKey || "",
               ColorKeyCode: spColor.ColorKeyCode || ColorKeyCode,
             });
           });
         } else {
-          // fallback original record
           finalColors.push(color);
         }
       } else {
-        // normal colors
         finalColors.push(color);
       }
     }
