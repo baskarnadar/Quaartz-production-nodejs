@@ -47,53 +47,243 @@ exports.getorder = async (req, res, next) => {
 };
 
  
-exports.getorderbyorderrefno = async (req, res, next) => { 
- 
-   
-const db = await connectToMongoDB();
-const RegUserIDVal = req.body.RegUserID;
-const mainCategories = db.collection('tblorder');
+ exports.getorderbyorderrefno = async (req, res, next) => {
+  try {
+    const db = await connectToMongoDB();
+    const RegUserIDVal = req.body.RegUserID;
+    const mainCategories = db.collection("tblorder");
 
-// Perform aggregation with multiple $lookup stages
-const result = await mainCategories.aggregate([
-  { 
-    $match: { RegUserID: RegUserIDVal } // Filter by OrderRefNo
-  },
-  
-]).toArray();
+    const url = process.env.IMAGEURL + "product/";
+    const ThumbUrl = url + "images/";
 
-result.forEach(mainCategory => {
-  console.log(`Main Category: ${mainCategory.EnPrdCategoryName}`);
-  
-  // Loop through each subcategory (suborderviews) and log details
-  if (mainCategory.suborderviews) {
-    console.log(`Subcategories:`);
-    console.log(`  - ${mainCategory.suborderviews.ArPrdSubCategoryName}`);
-    
-    // If product details are available, log the product information
-    if (mainCategory.productdetails) {
-      console.log(`    Product Name: ${mainCategory.productdetails.ProductName}`);
-      console.log(`    Product Image: ${mainCategory.productdetails.ProductImage}`);
+    if (!RegUserIDVal) {
+      return sendResponse(res, "RegUserID is required.", null, []);
     }
+
+    const result = await mainCategories
+      .aggregate([
+        {
+          $match: { RegUserID: RegUserIDVal },
+        },
+        {
+          $lookup: {
+            from: "tblorderdetails",
+            localField: "OrderRefNo",
+            foreignField: "OrderRefNo",
+            as: "suborderviews",
+          },
+        },
+        {
+          $lookup: {
+            from: "tblreginfo",
+            localField: "RegUserID",
+            foreignField: "RegUserID",
+            as: "userDetails",
+          },
+        },
+        {
+          $lookup: {
+            from: "tblProduct",
+            localField: "suborderviews.ProductID",
+            foreignField: "ProductID",
+            as: "productdetails",
+          },
+        },
+        {
+          $lookup: {
+            from: "tblProductColor",
+            localField: "suborderviews.PrdColorCodeID",
+            foreignField: "PrdColorCodeID",
+            as: "colorDetails",
+          },
+        },
+        {
+          $lookup: {
+            from: "tblPrdSpecialColor",
+            localField: "suborderviews.SplColorCodeIDPrKey",
+            foreignField: "SplColorCodeIDPrKey",
+            as: "specialColorDetails",
+          },
+        },
+        {
+          $lookup: {
+            from: "tblProductSize",
+            localField: "suborderviews.PrdSizeID",
+            foreignField: "PrdSizeID",
+            as: "sizeDetails",
+          },
+        },
+        {
+          $addFields: {
+            suborderviews: {
+              $map: {
+                input: { $ifNull: ["$suborderviews", []] },
+                as: "subOrder",
+                in: {
+                  $mergeObjects: [
+                    "$$subOrder",
+                    {
+                      $let: {
+                        vars: {
+                          matchingProduct: {
+                            $arrayElemAt: [
+                              {
+                                $filter: {
+                                  input: "$productdetails",
+                                  as: "product",
+                                  cond: {
+                                    $eq: [
+                                      "$$product.ProductID",
+                                      "$$subOrder.ProductID",
+                                    ],
+                                  },
+                                },
+                              },
+                              0,
+                            ],
+                          },
+                          matchingColor: {
+                            $arrayElemAt: [
+                              {
+                                $filter: {
+                                  input: "$colorDetails",
+                                  as: "color",
+                                  cond: {
+                                    $eq: [
+                                      "$$color.PrdColorCodeID",
+                                      "$$subOrder.PrdColorCodeID",
+                                    ],
+                                  },
+                                },
+                              },
+                              0,
+                            ],
+                          },
+                          matchingSpecialColor: {
+                            $arrayElemAt: [
+                              {
+                                $filter: {
+                                  input: "$specialColorDetails",
+                                  as: "specialColor",
+                                  cond: {
+                                    $eq: [
+                                      "$$specialColor.SplColorCodeIDPrKey",
+                                      "$$subOrder.SplColorCodeIDPrKey",
+                                    ],
+                                  },
+                                },
+                              },
+                              0,
+                            ],
+                          },
+                          matchingSize: {
+                            $arrayElemAt: [
+                              {
+                                $filter: {
+                                  input: "$sizeDetails",
+                                  as: "size",
+                                  cond: {
+                                    $eq: [
+                                      "$$size.PrdSizeID",
+                                      "$$subOrder.PrdSizeID",
+                                    ],
+                                  },
+                                },
+                              },
+                              0,
+                            ],
+                          },
+                        },
+                        in: {
+                          PrdName: {
+                            $ifNull: ["$$matchingProduct.PrdName", ""],
+                          },
+                          PrdThumb: {
+                            $concat: [
+                              ThumbUrl,
+                              { $ifNull: ["$$matchingProduct.PrdThumb", ""] },
+                            ],
+                          },
+                          PrdDesc: {
+                            $ifNull: ["$$matchingProduct.PrdDesc", ""],
+                          },
+                          Amount: {
+                            $ifNull: ["$$matchingProduct.PrdAmount", ""],
+                          },
+
+                          EnPrdColorName: {
+                            $ifNull: ["$$matchingColor.EnPrdColorName", ""],
+                          },
+                          ArPrdColorName: {
+                            $ifNull: ["$$matchingColor.ArPrdColorName", ""],
+                          },
+
+                          // From tblProductColor
+                          sigmacolorcode: {
+                            $ifNull: ["$$matchingColor.sigmacolorcode", ""],
+                          },
+
+                          EnPrdSizeName: {
+                            $ifNull: ["$$matchingSize.EnPrdSizeName", ""],
+                          },
+                          ArPrdSizeName: {
+                            $ifNull: ["$$matchingSize.ArPrdSizeName", ""],
+                          },
+
+                          SpecialColorSplColorCodeIDPrKey: {
+                            $ifNull: [
+                              "$$matchingSpecialColor.SplColorCodeIDPrKey",
+                              "",
+                            ],
+                          },
+                          SpecialColorColorKeyCode: {
+                            $ifNull: [
+                              "$$matchingSpecialColor.ColorKeyCode",
+                              "",
+                            ],
+                          },
+                          SpecialColorSplColorCodeID: {
+                            $ifNull: [
+                              "$$matchingSpecialColor.SplColorCodeID",
+                              "",
+                            ],
+                          },
+                          SpecialColorHexValue: {
+                            $ifNull: [
+                              "$$matchingSpecialColor.HexValue",
+                              "",
+                            ],
+                          },
+                          SpecialColorEnColorName: {
+                            $ifNull: [
+                              "$$matchingSpecialColor.EnColorName",
+                              "",
+                            ],
+                          },
+                          SpecialColorArColorName: {
+                            $ifNull: [
+                              "$$matchingSpecialColor.ArColorName",
+                              "",
+                            ],
+                          },
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      ])
+      .toArray();
+
+    return sendResponse(res, "Order data fetched successfully.", null, result);
+  } catch (error) {
+    console.log(error);
+    return next(error);
   }
-
-  console.log('---');
-
-  // Log the user details
-  if (mainCategory.userDetails && mainCategory.userDetails.length > 0) {
-    console.log(`User Info:`);
-    mainCategory.userDetails.forEach(user => {
-      console.log(`  - User Name: ${user.UserName}`);
-      console.log(`  - User Email: ${user.UserEmail}`);
-    });
-  }
-});
-
-// Send the final response with the fetched data
-sendResponse(res, "order Data fetched successfully.", null, result);
-
 };
- 
  
 exports.getorderbyorderrefnonew_working = async (req, res, next) => { 
   const db = await connectToMongoDB();
@@ -519,7 +709,7 @@ exports.getorderbyorderrefnonew_work = async (req, res, next) => {
   }
 };
 
-exports.getorderbyorderrefnonew = async (req, res, next) => {
+ exports.getorderbyorderrefnonew = async (req, res, next) => {
   const db = await connectToMongoDB();
   const OrderRefNoVal = req.body.OrderRefNo;
   const mainCategories = db.collection("tblorder");
@@ -527,269 +717,304 @@ exports.getorderbyorderrefnonew = async (req, res, next) => {
   const ThumbUrl = url + "images/";
 
   try {
-    const result = await mainCategories.aggregate([
-      {
-        $match: { OrderRefNo: OrderRefNoVal }
-      },
-      {
-        $lookup: {
-          from: "tblorderdetails",
-          localField: "OrderRefNo",
-          foreignField: "OrderRefNo",
-          as: "suborderviews"
-        }
-      },
-      {
-        $lookup: {
-          from: "tblreginfo",
-          localField: "RegUserID",
-          foreignField: "RegUserID",
-          as: "userDetails"
-        }
-      },
-      {
-        $lookup: {
-          from: "tblProduct",
-          localField: "suborderviews.ProductID",
-          foreignField: "ProductID",
-          as: "productdetails"
-        }
-      },
-      {
-        $lookup: {
-          from: "tblProductColor",
-          localField: "suborderviews.PrdColorCodeID",
-          foreignField: "PrdColorCodeID",
-          as: "colorDetails"
-        }
-      },
-      {
-        $lookup: {
-          from: "tblPrdSpecialColor",
-          localField: "suborderviews.SplColorCodeIDPrKey",
-          foreignField: "SplColorCodeIDPrKey",
-          as: "specialColorDetails"
-        }
-      },
-      {
-        $lookup: {
-          from: "tblProductSize",
-          localField: "suborderviews.PrdSizeID",
-          foreignField: "PrdSizeID",
-          as: "sizeDetails"
-        }
-      },
-      {
-        $lookup: {
-          from: "tblcity",
-          localField: "PickUpCityID",
-          foreignField: "CityID",
-          as: "citydetails"
-        }
-      },
-      {
-        $lookup: {
-          from: "tblstoreinfo",
-          let: { storeCode: { $toString: "$PickUpStoreID" } },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $eq: [{ $toString: "$StoreCodeID" }, "$$storeCode"]
-                }
-              }
-            }
-          ],
-          as: "storedetails"
-        }
-      },
-      {
-        $addFields: {
-          productdetails: {
-            $cond: {
-              if: { $isArray: "$productdetails" },
-              then: "$productdetails",
-              else: [{ $ifNull: ["$productdetails", []] }]
-            }
+    const result = await mainCategories
+      .aggregate([
+        {
+          $match: { OrderRefNo: OrderRefNoVal },
+        },
+        {
+          $lookup: {
+            from: "tblorderdetails",
+            localField: "OrderRefNo",
+            foreignField: "OrderRefNo",
+            as: "suborderviews",
           },
-          colorDetails: {
-            $cond: {
-              if: { $isArray: "$colorDetails" },
-              then: "$colorDetails",
-              else: [{ $ifNull: ["$colorDetails", []] }]
-            }
+        },
+        {
+          $lookup: {
+            from: "tblreginfo",
+            localField: "RegUserID",
+            foreignField: "RegUserID",
+            as: "userDetails",
           },
-          specialColorDetails: {
-            $cond: {
-              if: { $isArray: "$specialColorDetails" },
-              then: "$specialColorDetails",
-              else: [{ $ifNull: ["$specialColorDetails", []] }]
-            }
+        },
+        {
+          $lookup: {
+            from: "tblProduct",
+            localField: "suborderviews.ProductID",
+            foreignField: "ProductID",
+            as: "productdetails",
           },
-          sizeDetails: {
-            $cond: {
-              if: { $isArray: "$sizeDetails" },
-              then: "$sizeDetails",
-              else: [{ $ifNull: ["$sizeDetails", []] }]
-            }
-          }
-        }
-      },
-      {
-        $addFields: {
-          suborderviews: {
-            $map: {
-              input: "$suborderviews",
-              as: "subOrder",
-              in: {
-                $mergeObjects: [
-                  "$$subOrder",
-                  {
-                    $let: {
-                      vars: {
-                        matchingProduct: {
-                          $arrayElemAt: [
-                            {
-                              $filter: {
-                                input: "$productdetails",
-                                as: "product",
-                                cond: {
-                                  $eq: ["$$product.ProductID", "$$subOrder.ProductID"]
-                                }
-                              }
-                            },
-                            0
-                          ]
+        },
+        {
+          $lookup: {
+            from: "tblProductColor",
+            localField: "suborderviews.PrdColorCodeID",
+            foreignField: "PrdColorCodeID",
+            as: "colorDetails",
+          },
+        },
+        {
+          $lookup: {
+            from: "tblPrdSpecialColor",
+            localField: "suborderviews.SplColorCodeIDPrKey",
+            foreignField: "SplColorCodeIDPrKey",
+            as: "specialColorDetails",
+          },
+        },
+        {
+          $lookup: {
+            from: "tblProductSize",
+            localField: "suborderviews.PrdSizeID",
+            foreignField: "PrdSizeID",
+            as: "sizeDetails",
+          },
+        },
+        {
+          $lookup: {
+            from: "tblcity",
+            localField: "PickUpCityID",
+            foreignField: "CityID",
+            as: "citydetails",
+          },
+        },
+        {
+          $lookup: {
+            from: "tblstoreinfo",
+            let: { storeCode: { $toString: "$PickUpStoreID" } },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $eq: [{ $toString: "$StoreCodeID" }, "$$storeCode"],
+                  },
+                },
+              },
+            ],
+            as: "storedetails",
+          },
+        },
+        {
+          $addFields: {
+            productdetails: {
+              $cond: {
+                if: { $isArray: "$productdetails" },
+                then: "$productdetails",
+                else: [{ $ifNull: ["$productdetails", []] }],
+              },
+            },
+            colorDetails: {
+              $cond: {
+                if: { $isArray: "$colorDetails" },
+                then: "$colorDetails",
+                else: [{ $ifNull: ["$colorDetails", []] }],
+              },
+            },
+            specialColorDetails: {
+              $cond: {
+                if: { $isArray: "$specialColorDetails" },
+                then: "$specialColorDetails",
+                else: [{ $ifNull: ["$specialColorDetails", []] }],
+              },
+            },
+            sizeDetails: {
+              $cond: {
+                if: { $isArray: "$sizeDetails" },
+                then: "$sizeDetails",
+                else: [{ $ifNull: ["$sizeDetails", []] }],
+              },
+            },
+          },
+        },
+        {
+          $addFields: {
+            suborderviews: {
+              $map: {
+                input: "$suborderviews",
+                as: "subOrder",
+                in: {
+                  $mergeObjects: [
+                    "$$subOrder",
+                    {
+                      $let: {
+                        vars: {
+                          matchingProduct: {
+                            $arrayElemAt: [
+                              {
+                                $filter: {
+                                  input: "$productdetails",
+                                  as: "product",
+                                  cond: {
+                                    $eq: [
+                                      "$$product.ProductID",
+                                      "$$subOrder.ProductID",
+                                    ],
+                                  },
+                                },
+                              },
+                              0,
+                            ],
+                          },
+                          matchingColor: {
+                            $arrayElemAt: [
+                              {
+                                $filter: {
+                                  input: "$colorDetails",
+                                  as: "color",
+                                  cond: {
+                                    $eq: [
+                                      "$$color.PrdColorCodeID",
+                                      "$$subOrder.PrdColorCodeID",
+                                    ],
+                                  },
+                                },
+                              },
+                              0,
+                            ],
+                          },
+                          matchingSpecialColor: {
+                            $arrayElemAt: [
+                              {
+                                $filter: {
+                                  input: "$specialColorDetails",
+                                  as: "specialColor",
+                                  cond: {
+                                    $eq: [
+                                      "$$specialColor.SplColorCodeIDPrKey",
+                                      "$$subOrder.SplColorCodeIDPrKey",
+                                    ],
+                                  },
+                                },
+                              },
+                              0,
+                            ],
+                          },
+                          matchingSize: {
+                            $arrayElemAt: [
+                              {
+                                $filter: {
+                                  input: "$sizeDetails",
+                                  as: "size",
+                                  cond: {
+                                    $eq: [
+                                      "$$size.PrdSizeID",
+                                      "$$subOrder.PrdSizeID",
+                                    ],
+                                  },
+                                },
+                              },
+                              0,
+                            ],
+                          },
                         },
-                        matchingColor: {
-                          $arrayElemAt: [
-                            {
-                              $filter: {
-                                input: "$colorDetails",
-                                as: "color",
-                                cond: {
-                                  $eq: [
-                                    "$$color.PrdColorCodeID",
-                                    "$$subOrder.PrdColorCodeID"
-                                  ]
-                                }
-                              }
-                            },
-                            0
-                          ]
+                        in: {
+                          Amount: {
+                            $ifNull: ["$$matchingProduct.PrdAmount", ""],
+                          },
+                          PrdName: {
+                            $ifNull: ["$$matchingProduct.PrdName", ""],
+                          },
+                          PrdThumb: {
+                            $ifNull: [
+                              {
+                                $concat: [
+                                  ThumbUrl,
+                                  { $ifNull: ["$$matchingProduct.PrdThumb", ""] },
+                                ],
+                              },
+                              "",
+                            ],
+                          },
+                          PrdDesc: {
+                            $ifNull: ["$$matchingProduct.PrdDesc", ""],
+                          },
+
+                          EnPrdColorName: {
+                            $ifNull: ["$$matchingColor.EnPrdColorName", ""],
+                          },
+                          AdPrdColorName: {
+                            $ifNull: ["$$matchingColor.ArPrdColorName", ""],
+                          },
+
+                          // Sigma color code from tblProductColor
+                          sigmacolorcode: {
+                            $ifNull: ["$$matchingColor.sigmacolorcode", ""],
+                          },
+
+                          SpecialColorSplColorCodeIDPrKey: {
+                            $ifNull: [
+                              "$$matchingSpecialColor.SplColorCodeIDPrKey",
+                              "",
+                            ],
+                          },
+                          SpecialColorColorKeyCode: {
+                            $ifNull: [
+                              "$$matchingSpecialColor.ColorKeyCode",
+                              "",
+                            ],
+                          },
+                          SpecialColorSplColorCodeID: {
+                            $ifNull: [
+                              "$$matchingSpecialColor.SplColorCodeID",
+                              "",
+                            ],
+                          },
+                          SpecialColorHexValue: {
+                            $ifNull: [
+                              "$$matchingSpecialColor.HexValue",
+                              "",
+                            ],
+                          },
+                          SpecialColorEnColorName: {
+                            $ifNull: [
+                              "$$matchingSpecialColor.EnColorName",
+                              "",
+                            ],
+                          },
+                          SpecialColorArColorName: {
+                            $ifNull: [
+                              "$$matchingSpecialColor.ArColorName",
+                              "",
+                            ],
+                          },
+
+                          EnPrdSizeName: {
+                            $ifNull: ["$$matchingSize.EnPrdSizeName", ""],
+                          },
+                          ArPrdSizeName: {
+                            $ifNull: ["$$matchingSize.ArPrdSizeName", ""],
+                          },
                         },
-                        matchingSpecialColor: {
-                          $arrayElemAt: [
-                            {
-                              $filter: {
-                                input: "$specialColorDetails",
-                                as: "specialColor",
-                                cond: {
-                                  $eq: [
-                                    "$$specialColor.SplColorCodeIDPrKey",
-                                    "$$subOrder.SplColorCodeIDPrKey"
-                                  ]
-                                }
-                              }
-                            },
-                            0
-                          ]
-                        },
-                        matchingSize: {
-                          $arrayElemAt: [
-                            {
-                              $filter: {
-                                input: "$sizeDetails",
-                                as: "size",
-                                cond: {
-                                  $eq: ["$$size.PrdSizeID", "$$subOrder.PrdSizeID"]
-                                }
-                              }
-                            },
-                            0
-                          ]
-                        }
                       },
-                      in: {
-                        Amount: { $ifNull: ["$$matchingProduct.PrdAmount", ""] },
-                        PrdName: { $ifNull: ["$$matchingProduct.PrdName", ""] },
-                        PrdThumb: {
-                          $ifNull: [
-                            {
-                              $concat: [ThumbUrl, "$$matchingProduct.PrdThumb"]
-                            },
-                            ""
-                          ]
-                        },
-                        PrdDesc: { $ifNull: ["$$matchingProduct.PrdDesc", ""] },
-
-                        EnPrdColorName: {
-                          $ifNull: ["$$matchingColor.EnPrdColorName", ""]
-                        },
-                        AdPrdColorName: {
-                          $ifNull: ["$$matchingColor.ArPrdColorName", ""]
-                        },
-
-                        SpecialColorSplColorCodeIDPrKey: {
-                          $ifNull: ["$$matchingSpecialColor.SplColorCodeIDPrKey", ""]
-                        },
-                        SpecialColorColorKeyCode: {
-                          $ifNull: ["$$matchingSpecialColor.ColorKeyCode", ""]
-                        },
-                        SpecialColorSplColorCodeID: {
-                          $ifNull: ["$$matchingSpecialColor.SplColorCodeID", ""]
-                        },
-                        SpecialColorHexValue: {
-                          $ifNull: ["$$matchingSpecialColor.HexValue", ""]
-                        },
-                        SpecialColorEnColorName: {
-                          $ifNull: ["$$matchingSpecialColor.EnColorName", ""]
-                        },
-                        SpecialColorArColorName: {
-                          $ifNull: ["$$matchingSpecialColor.ArColorName", ""]
-                        },
-
-                        EnPrdSizeName: {
-                          $ifNull: ["$$matchingSize.EnPrdSizeName", ""]
-                        },
-                        ArPrdSizeName: {
-                          $ifNull: ["$$matchingSize.ArPrdSizeName", ""]
-                        }
-                      }
-                    }
-                  }
-                ]
-              }
-            }
-          }
-        }
-      },
-      {
-        $addFields: {
-          citydetails: {
-            $cond: {
-              if: { $isArray: "$citydetails" },
-              then: "$citydetails",
-              else: [{ $ifNull: ["$citydetails", []] }]
-            }
+                    },
+                  ],
+                },
+              },
+            },
           },
-          storedetails: {
-            $cond: {
-              if: { $isArray: "$storedetails" },
-              then: "$storedetails",
-              else: [{ $ifNull: ["$storedetails", []] }]
-            }
-          }
-        }
-      }
-    ]).toArray();
+        },
+        {
+          $addFields: {
+            citydetails: {
+              $cond: {
+                if: { $isArray: "$citydetails" },
+                then: "$citydetails",
+                else: [{ $ifNull: ["$citydetails", []] }],
+              },
+            },
+            storedetails: {
+              $cond: {
+                if: { $isArray: "$storedetails" },
+                then: "$storedetails",
+                else: [{ $ifNull: ["$storedetails", []] }],
+              },
+            },
+          },
+        },
+      ])
+      .toArray();
 
-    return sendResponse(
-      res,
-      "Order data fetched successfully.",
-      null,
-      result
-    );
+    return sendResponse(res, "Order data fetched successfully.", null, result);
   } catch (error) {
     console.log(error);
     next(error);
