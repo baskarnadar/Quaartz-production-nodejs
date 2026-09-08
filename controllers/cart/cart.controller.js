@@ -108,6 +108,7 @@ exports.getCartList = async (req, res, next) => {
                 
                 EnPrdColorName: '$colorDetails.EnPrdColorName',
                 ArPrdColorName: '$colorDetails.ArPrdColorName',
+                sigmacolorcode: { $ifNull: ['$colorDetails.sigmacolorcode', ''] },
                 
                 EnPrdSizeName: '$sizeDetails.EnPrdSizeName',
                 ArPrdSizeName: '$sizeDetails.ArPrdSizeName',
