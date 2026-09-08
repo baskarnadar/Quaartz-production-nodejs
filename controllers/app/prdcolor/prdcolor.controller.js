@@ -60,6 +60,7 @@ function sendResponse(res, message, error, results) {
       ColorCode: item.SplColorCodeID || "",
       ColorName: item.SplColorCodeID || "",
       subColorCode : item.HexValue || "",
+       SubColorCode : item.HexValue || "",
     }));
 
     return sendResponse(
