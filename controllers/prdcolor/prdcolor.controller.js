@@ -1,4 +1,4 @@
-const { connectToMongoDB } = require("../../database/mongodb");
+ const { connectToMongoDB } = require("../../database/mongodb");
 const { generateUniqueId } = require("../../controllers/operation/operation");
 // Helper function to send responses
 function sendResponse(res, message, error, results) {
@@ -76,6 +76,7 @@ exports.getprdcolorbyid = async (req, res, next) => {
               SplColorCodeID: spColor.SplColorCodeID || "",
               SplColorCodeIDPrKey: spColor.SplColorCodeIDPrKey || "",
               ColorKeyCode: spColor.ColorKeyCode || ColorKeyCode,
+              sigmacolorcode: color.sigmacolorcode || "",
             });
           });
         } else {
@@ -83,6 +84,7 @@ exports.getprdcolorbyid = async (req, res, next) => {
             ...color,
             SplColorCodeID: color.SplColorCodeID || "",
             ColorKeyCode: color.ColorKeyCode || "",
+            sigmacolorcode: color.sigmacolorcode || "",
           });
         }
       } else {
@@ -90,6 +92,7 @@ exports.getprdcolorbyid = async (req, res, next) => {
           ...color,
           SplColorCodeID: color.SplColorCodeID || "",
           ColorKeyCode: color.ColorKeyCode || "",
+          sigmacolorcode: color.sigmacolorcode || "",
         });
       }
     }
@@ -142,13 +145,14 @@ exports.getprdcolorlist = async (req, res, next) => {
 };
 
 exports.editPrdColor = async (req, res, next) => {
-  const { PrdColorCodeID, ProductID, EnPrdColorName,ArPrdColorName,PrdColorCode } = req.body;  // Assuming `updatedData` contains fields to update
+  const { PrdColorCodeID, ProductID, EnPrdColorName,ArPrdColorName,PrdColorCode, sigmacolorcode } = req.body;  // Assuming `updatedData` contains fields to update
 
   const updatedData = {
     EnPrdColorName: EnPrdColorName,
     ArPrdColorName: ArPrdColorName,
     modifiedAt: new Date(),
-    PrdColorCode:PrdColorCode
+    PrdColorCode:PrdColorCode,
+    sigmacolorcode: sigmacolorcode
   };
   const db = await connectToMongoDB();
   try {
@@ -181,6 +185,8 @@ exports.editPrdColor = async (req, res, next) => {
     if (!ProductID) {
       return sendResponse(res, "ProductID is required.", null, []);
     }
+
+    const sigmacolorcode = req.body.sigmacolorcode;
 
     const rawColorKeyCode = req.body.ColorKeyCode;
 
@@ -221,6 +227,7 @@ exports.editPrdColor = async (req, res, next) => {
           modifiedAt: new Date(),
           createdAt: new Date(),
           PrdColorCode: req.body.PrdColorCode,
+          sigmacolorcode: sigmacolorcode,
           ProductID: ProductID,
           PrdColorCodeID: generateUniqueId(),
           createdBy: "USER",
@@ -258,6 +265,7 @@ exports.editPrdColor = async (req, res, next) => {
           modifiedAt: new Date(),
           createdAt: new Date(),
           PrdColorCode: req.body.PrdColorCode,
+          sigmacolorcode: sigmacolorcode,
           ProductID: ProductID,
           PrdColorCodeID: generateUniqueId(),
           createdBy: "USER",

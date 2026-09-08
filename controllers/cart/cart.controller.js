@@ -70,7 +70,7 @@ exports.getCartList = async (req, res, next) => {
             }
         },
 
-        // ✅ NEW: link tblcart.SplColorCodeIDPrKey with tblPrdSpecialColor.SplColorCodeIDPrKey
+        // ✅ NEW: link tblcart.SplColorCodeIDPrKey with .SplColorCodeIDPrKey
         {
             $lookup: {
                 from: 'tblPrdSpecialColor',
