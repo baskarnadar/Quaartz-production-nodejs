@@ -48,7 +48,7 @@ function sendResponse(res, message, error, results) {
     }
 
     const documents = await db
-      .collection("tblPrdSpecialColor")
+      .collection("tblSubColorCode")
       .find({
         MainColorCodeID: String(MainColorCodeID).trim(),
       })
@@ -57,8 +57,8 @@ function sendResponse(res, message, error, results) {
 
     const updatedDocuments = documents.map((item) => ({
       ...item,
-      EnSubColorName: item.SplColorCodeID || "",
-      ArSubColorName: item.SplColorCodeID || "",
+      EnSubColorName: item.ColorCode || "",
+      ArSubColorName: item.ColorCode || "",
     }));
 
     return sendResponse(
