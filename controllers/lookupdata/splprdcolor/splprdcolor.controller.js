@@ -1,4 +1,4 @@
-// splprdcolor.controller.js
+ // splprdcolor.controller.js
 const { connectToMongoDB } = require("../../../database/mongodb");
 const { generateUniqueId } = require("../../../controllers/operation/operation");
 
@@ -15,8 +15,10 @@ function sendResponse(res, message, error, results) {
 // ------------------------------------------------------------
 // GET: list all special product colors
 // Table: tblPrdSpecialColor
+// ✅ UPDATED: supports MainColorCodeID filter + joins main color
+//    collection so each row also returns EnMainColorName / ArMainColorName
 // ------------------------------------------------------------
- exports.getSplcolorlist = async (req, res, next) => {
+exports.getSplcolorlist = async (req, res, next) => {
   try {
     const db = await connectToMongoDB();
 
@@ -28,6 +30,10 @@ function sendResponse(res, message, error, results) {
     const skip = isShowAll ? 0 : (page - 1) * limit;
 
     const ColorKeyCode = String(req.body.ColorKeyCode || "").trim();
+
+    // ✅ NEW: Main Color filter
+    const MainColorCodeID = String(req.body.MainColorCodeID || "").trim();
+
     const searchText = String(req.body.searchText || "").trim();
 
     const allowedSortFields = [
@@ -36,6 +42,7 @@ function sendResponse(res, message, error, results) {
       "HexValue",
       "EnColorName",
       "ArColorName",
+      "MainColorCodeID",
       "createdAt",
     ];
 
@@ -55,6 +62,11 @@ function sendResponse(res, message, error, results) {
       filter.ColorKeyCode = ColorKeyCode;
     }
 
+    // ✅ NEW: Main Color filter
+    if (MainColorCodeID && MainColorCodeID !== "ALL") {
+      filter.MainColorCodeID = MainColorCodeID;
+    }
+
     // ✅ Search filter
     if (searchText) {
       filter.$or = [
@@ -63,6 +75,7 @@ function sendResponse(res, message, error, results) {
         { HexValue: { $regex: searchText, $options: "i" } },
         { EnColorName: { $regex: searchText, $options: "i" } },
         { ArColorName: { $regex: searchText, $options: "i" } },
+        { MainColorCodeID: { $regex: searchText, $options: "i" } },
       ];
     }
 
@@ -71,21 +84,56 @@ function sendResponse(res, message, error, results) {
       .collection("tblPrdSpecialColor")
       .countDocuments(filter);
 
-    // ✅ Query
-    const query = db
-      .collection("tblPrdSpecialColor")
-      .find(filter)
-      .sort({ [sortField]: sortOrder });
-
-    if (!isShowAll) {
-      query.skip(skip).limit(limit);
-    }
-
-    const documents = await query.toArray();
-
     const totalPages = isShowAll
       ? 1
       : Math.max(1, Math.ceil(totalRecords / limit));
+
+    // ------------------------------------------------------------
+    // ✅ NEW: Aggregation pipeline with $lookup to join Main Color
+    // collection (tblPrdMainColor) so the frontend can display
+    // EnMainColorName / ArMainColorName directly on each row.
+    // ------------------------------------------------------------
+    const pipeline = [
+      { $match: filter },
+      { $sort: { [sortField]: sortOrder } },
+    ];
+
+    if (!isShowAll) {
+      pipeline.push({ $skip: skip }, { $limit: limit });
+    }
+
+    pipeline.push(
+      {
+        $lookup: {
+          from: "tblPrdMainColor",
+          localField: "MainColorCodeID",
+          foreignField: "MainColorCodeID",
+          as: "mainColorInfo",
+        },
+      },
+      {
+        $unwind: {
+          path: "$mainColorInfo",
+          preserveNullAndEmptyArray: true,
+        },
+      },
+      {
+        $addFields: {
+          EnMainColorName: "$mainColorInfo.EnMainColorName",
+          ArMainColorName: "$mainColorInfo.ArMainColorName",
+        },
+      },
+      {
+        $project: {
+          mainColorInfo: 0,
+        },
+      }
+    );
+
+    const documents = await db
+      .collection("tblPrdSpecialColor")
+      .aggregate(pipeline)
+      .toArray();
 
     return sendResponse(
       res,
@@ -114,9 +162,12 @@ function sendResponse(res, message, error, results) {
     next(error);
   }
 };
+
 // ------------------------------------------------------------
 // FETCH FOR EDIT
 // Frontend sends: SplColorCodeIDPrKey
+// Returns full document, including MainColorCodeID, so the
+// modify form dropdown can auto-select it.
 // ------------------------------------------------------------
 exports.editSplColor = async (req, res, next) => {
   try {
@@ -148,6 +199,7 @@ exports.editSplColor = async (req, res, next) => {
 // Table: tblPrdSpecialColor
 // Fields:
 // SplColorCodeIDPrKey
+// MainColorCodeID   ✅ NEW
 // ColorKeyCode
 // SplColorCodeID
 // HexValue
@@ -160,6 +212,7 @@ exports.addSplColor = async (req, res, next) => {
 
     const {
       SplColorCodeIDPrKey,
+      MainColorCodeID,
       ColorKeyCode,
       SplColorCodeID,
       HexValue,
@@ -170,10 +223,18 @@ exports.addSplColor = async (req, res, next) => {
       ModifyBy,
     } = req.body || {};
 
-    if (!ColorKeyCode || !SplColorCodeID || !HexValue || !EnColorName || !ArColorName) {
+    // ✅ NEW: MainColorCodeID required
+    if (
+      !MainColorCodeID ||
+      !ColorKeyCode ||
+      !SplColorCodeID ||
+      !HexValue ||
+      !EnColorName ||
+      !ArColorName
+    ) {
       return sendResponse(
         res,
-        "Please provide: ColorKeyCode, SplColorCodeID, HexValue, EnColorName, ArColorName",
+        "Please provide: MainColorCodeID, ColorKeyCode, SplColorCodeID, HexValue, EnColorName, ArColorName",
         "validation_error",
         null
       );
@@ -181,6 +242,7 @@ exports.addSplColor = async (req, res, next) => {
 
     const now = new Date();
 
+    const cleanMainColorCodeID = String(MainColorCodeID).trim();
     const cleanColorKeyCode = String(ColorKeyCode).trim();
     const cleanSplColorCodeID = String(SplColorCodeID).trim();
 
@@ -203,6 +265,9 @@ exports.addSplColor = async (req, res, next) => {
       SplColorCodeIDPrKey: SplColorCodeIDPrKey
         ? String(SplColorCodeIDPrKey).trim()
         : generateUniqueId(),
+
+      // ✅ NEW
+      MainColorCodeID: cleanMainColorCodeID,
 
       ColorKeyCode: cleanColorKeyCode,
       SplColorCodeID: cleanSplColorCodeID,
@@ -233,6 +298,7 @@ exports.addSplColor = async (req, res, next) => {
 // DELETE
 // Frontend sends: SplColorCodeIDPrKey
 // Soft delete: IsDataStatus = 0
+// (No MainColorCodeID needed here — delete is by primary key only)
 // ------------------------------------------------------------
 exports.delSplColor = async (req, res, next) => {
   try {
@@ -274,6 +340,7 @@ exports.delSplColor = async (req, res, next) => {
 // ------------------------------------------------------------
 // UPDATE
 // Frontend sends: SplColorCodeIDPrKey
+// ✅ UPDATED: accepts + persists MainColorCodeID
 // ------------------------------------------------------------
 exports.updateSplColor = async (req, res, next) => {
   try {
@@ -281,6 +348,7 @@ exports.updateSplColor = async (req, res, next) => {
 
     const {
       SplColorCodeIDPrKey,
+      MainColorCodeID,
       ColorKeyCode,
       SplColorCodeID,
       HexValue,
@@ -313,6 +381,9 @@ exports.updateSplColor = async (req, res, next) => {
       modifiedAt: new Date(),
       updatedBy: ModifyBy || "USER",
     };
+
+    // ✅ NEW
+    if (MainColorCodeID !== undefined) setDoc.MainColorCodeID = String(MainColorCodeID).trim();
 
     if (ColorKeyCode !== undefined) setDoc.ColorKeyCode = String(ColorKeyCode).trim();
     if (SplColorCodeID !== undefined) setDoc.SplColorCodeID = String(SplColorCodeID).trim();
