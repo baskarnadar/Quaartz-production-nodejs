@@ -1,4 +1,4 @@
-// mainprdcolor.controller.js
+ // mainprdcolor.controller.js
 const { connectToMongoDB } = require("../../../../database/mongodb");
 const { generateUniqueId } = require("../../../../controllers/operation/operation");
 
@@ -109,6 +109,7 @@ exports.addMainColor = async (req, res, next) => {
       MainColorType,
       EnMainColorName,
       ArMainColorName,
+      sigmacolorcode,
       IsDataStatus,
       CreatedBy,
       ModifyBy,
@@ -131,6 +132,7 @@ exports.addMainColor = async (req, res, next) => {
       MainColorType: String(MainColorType).trim(),
       EnMainColorName: String(EnMainColorName).trim(),
       ArMainColorName: String(ArMainColorName).trim(),
+      sigmacolorcode: String(sigmacolorcode || "").trim(),
       createdAt: now,
       modifiedAt: now,
       createdBy: CreatedBy || "USER",
@@ -195,6 +197,7 @@ exports.updateMainColor = async (req, res, next) => {
       MainColorType,
       EnMainColorName,
       ArMainColorName,
+      sigmacolorcode,
       IsDataStatus,
       ModifyBy,
     } = req.body || {};
@@ -216,6 +219,7 @@ exports.updateMainColor = async (req, res, next) => {
     if (MainColorType !== undefined) setDoc.MainColorType = String(MainColorType).trim();
     if (EnMainColorName !== undefined) setDoc.EnMainColorName = String(EnMainColorName).trim();
     if (ArMainColorName !== undefined) setDoc.ArMainColorName = String(ArMainColorName).trim();
+    if (sigmacolorcode !== undefined) setDoc.sigmacolorcode = String(sigmacolorcode).trim();
     if (IsDataStatus !== undefined) setDoc.IsDataStatus = Number(IsDataStatus);
 
     // ✅ updateOne
