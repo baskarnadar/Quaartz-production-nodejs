@@ -16,7 +16,8 @@ function sendResponse(res, message, error, results) {
 // GET: list all special product colors
 // Table: tblPrdSpecialColor
 // ✅ UPDATED: supports MainColorCodeID filter + joins main color
-//    collection so each row also returns EnMainColorName / ArMainColorName
+//    collection (tblMainColorCode) so each row also returns
+//    EnMainColorName / ArMainColorName
 // ------------------------------------------------------------
 exports.getSplcolorlist = async (req, res, next) => {
   try {
@@ -31,7 +32,7 @@ exports.getSplcolorlist = async (req, res, next) => {
 
     const ColorKeyCode = String(req.body.ColorKeyCode || "").trim();
 
-    // ✅ NEW: Main Color filter
+    // ✅ Main Color filter
     const MainColorCodeID = String(req.body.MainColorCodeID || "").trim();
 
     const searchText = String(req.body.searchText || "").trim();
@@ -62,7 +63,7 @@ exports.getSplcolorlist = async (req, res, next) => {
       filter.ColorKeyCode = ColorKeyCode;
     }
 
-    // ✅ NEW: Main Color filter
+    // ✅ Main Color filter
     if (MainColorCodeID && MainColorCodeID !== "ALL") {
       filter.MainColorCodeID = MainColorCodeID;
     }
@@ -89,9 +90,9 @@ exports.getSplcolorlist = async (req, res, next) => {
       : Math.max(1, Math.ceil(totalRecords / limit));
 
     // ------------------------------------------------------------
-    // ✅ NEW: Aggregation pipeline with $lookup to join Main Color
-    // collection (tblPrdMainColor) so the frontend can display
-    // EnMainColorName / ArMainColorName directly on each row.
+    // ✅ FIXED: $lookup now points to the REAL Main Color collection
+    // "tblMainColorCode" (confirmed via mainprdcolor.controller.js),
+    // not "tblPrdMainColor" which does not exist.
     // ------------------------------------------------------------
     const pipeline = [
       { $match: filter },
@@ -105,7 +106,7 @@ exports.getSplcolorlist = async (req, res, next) => {
     pipeline.push(
       {
         $lookup: {
-          from: "tblPrdMainColor",
+          from: "tblMainColorCode",
           localField: "MainColorCodeID",
           foreignField: "MainColorCodeID",
           as: "mainColorInfo",
@@ -114,7 +115,7 @@ exports.getSplcolorlist = async (req, res, next) => {
       {
         $unwind: {
           path: "$mainColorInfo",
-          preserveNullAndEmptyArray: true,
+          preserveNullAndEmptyArrays: true,
         },
       },
       {
@@ -199,7 +200,7 @@ exports.editSplColor = async (req, res, next) => {
 // Table: tblPrdSpecialColor
 // Fields:
 // SplColorCodeIDPrKey
-// MainColorCodeID   ✅ NEW
+// MainColorCodeID
 // ColorKeyCode
 // SplColorCodeID
 // HexValue
@@ -223,7 +224,6 @@ exports.addSplColor = async (req, res, next) => {
       ModifyBy,
     } = req.body || {};
 
-    // ✅ NEW: MainColorCodeID required
     if (
       !MainColorCodeID ||
       !ColorKeyCode ||
@@ -266,7 +266,6 @@ exports.addSplColor = async (req, res, next) => {
         ? String(SplColorCodeIDPrKey).trim()
         : generateUniqueId(),
 
-      // ✅ NEW
       MainColorCodeID: cleanMainColorCodeID,
 
       ColorKeyCode: cleanColorKeyCode,
@@ -298,7 +297,6 @@ exports.addSplColor = async (req, res, next) => {
 // DELETE
 // Frontend sends: SplColorCodeIDPrKey
 // Soft delete: IsDataStatus = 0
-// (No MainColorCodeID needed here — delete is by primary key only)
 // ------------------------------------------------------------
 exports.delSplColor = async (req, res, next) => {
   try {
@@ -340,7 +338,7 @@ exports.delSplColor = async (req, res, next) => {
 // ------------------------------------------------------------
 // UPDATE
 // Frontend sends: SplColorCodeIDPrKey
-// ✅ UPDATED: accepts + persists MainColorCodeID
+// ✅ Accepts + persists MainColorCodeID
 // ------------------------------------------------------------
 exports.updateSplColor = async (req, res, next) => {
   try {
@@ -382,7 +380,6 @@ exports.updateSplColor = async (req, res, next) => {
       updatedBy: ModifyBy || "USER",
     };
 
-    // ✅ NEW
     if (MainColorCodeID !== undefined) setDoc.MainColorCodeID = String(MainColorCodeID).trim();
 
     if (ColorKeyCode !== undefined) setDoc.ColorKeyCode = String(ColorKeyCode).trim();
