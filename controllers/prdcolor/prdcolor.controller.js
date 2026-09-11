@@ -49,7 +49,7 @@ exports.getprdcolorbyid = async (req, res, next) => {
     const specialColorCollection = db.collection("tblPrdSpecialColor");
 
     const productColors = await productColorCollection
-      .find({ ProductID: ProductID })
+      .find({ ProductID })
       .toArray();
 
     const finalColors = [];
@@ -57,6 +57,8 @@ exports.getprdcolorbyid = async (req, res, next) => {
     for (const color of productColors) {
       const ColorKeyCode = String(color.ColorKeyCode || "").trim();
 
+      // If tblProductColor.ColorKeyCode exists:
+      // get Sigma Color Code from tblPrdSpecialColor.SplColorCodeID
       if (ColorKeyCode !== "") {
         const specialColors = await specialColorCollection
           .find({ ColorKeyCode })
@@ -72,14 +74,16 @@ exports.getprdcolorbyid = async (req, res, next) => {
               ProductID,
               PrdColorCodeID: spColor.SplColorCodeIDPrKey || "",
 
-              // Added to response
               SplColorCodeID: spColor.SplColorCodeID || "",
               SplColorCodeIDPrKey: spColor.SplColorCodeIDPrKey || "",
               ColorKeyCode: spColor.ColorKeyCode || ColorKeyCode,
-              sigmacolorcode: color.sigmacolorcode || "",
+
+              // Special color: take Sigma code from tblPrdSpecialColor
+              sigmacolorcode: spColor.SplColorCodeID || "",
             });
           });
         } else {
+          // ColorKeyCode exists but no matching special color found
           finalColors.push({
             ...color,
             SplColorCodeID: color.SplColorCodeID || "",
@@ -88,6 +92,7 @@ exports.getprdcolorbyid = async (req, res, next) => {
           });
         }
       } else {
+        // Normal color: take Sigma code from tblProductColor
         finalColors.push({
           ...color,
           SplColorCodeID: color.SplColorCodeID || "",
