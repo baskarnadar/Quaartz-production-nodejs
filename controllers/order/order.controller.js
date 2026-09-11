@@ -709,7 +709,7 @@ exports.getorderbyorderrefnonew_work = async (req, res, next) => {
   }
 };
 
- exports.getorderbyorderrefnonew = async (req, res, next) => {
+exports.getorderbyorderrefnonew = async (req, res, next) => {
   const db = await connectToMongoDB();
   const OrderRefNoVal = req.body.OrderRefNo;
   const mainCategories = db.collection("tblorder");
@@ -936,9 +936,35 @@ exports.getorderbyorderrefnonew_work = async (req, res, next) => {
                             $ifNull: ["$$matchingColor.ArPrdColorName", ""],
                           },
 
-                          // Sigma color code from tblProductColor
+                          // Use the special colour Sigma code when a special
+                          // colour has been selected; otherwise use the normal
+                          // product colour Sigma code.
                           sigmacolorcode: {
-                            $ifNull: ["$$matchingColor.sigmacolorcode", ""],
+                            $cond: [
+                              {
+                                $ne: [
+                                  {
+                                    $ifNull: [
+                                      "$$matchingSpecialColor.ColorKeyCode",
+                                      "",
+                                    ],
+                                  },
+                                  "",
+                                ],
+                              },
+                              {
+                                $ifNull: [
+                                  "$$matchingSpecialColor.SplColorCodeID",
+                                  "",
+                                ],
+                              },
+                              {
+                                $ifNull: [
+                                  "$$matchingColor.sigmacolorcode",
+                                  "",
+                                ],
+                              },
+                            ],
                           },
 
                           SpecialColorSplColorCodeIDPrKey: {
@@ -1020,6 +1046,7 @@ exports.getorderbyorderrefnonew_work = async (req, res, next) => {
     next(error);
   }
 };
+
  exports.updateOrderStatus = async (req, res, next) => {
   try {
     const db = await connectToMongoDB();
