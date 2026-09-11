@@ -12,129 +12,149 @@ function sendResponse(res, message, error, results) {
 
  
 exports.getCartList = async (req, res, next) => {
-
   const url = process.env.IMAGEURL + "product/";
   const ThumbUrl = url + "images/";
-  
+
   try {
     const OrderRefNoVal = req.body.OrderRefNo;
     console.log(OrderRefNoVal);
 
     const db = await connectToMongoDB();
-    const collection = db.collection('tblcart');
+    const collection = db.collection("tblcart");
 
-    collection.aggregate([
-        { 
-            $match: { OrderRefNo: OrderRefNoVal }
+    collection
+      .aggregate([
+        {
+          $match: { OrderRefNo: OrderRefNoVal },
         },
         {
-            $lookup: {
-                from: 'tblProduct',
-                localField: 'ProductID',
-                foreignField: 'ProductID',
-                as: 'productDetails'
-            }
-        },
-        { 
-            $unwind: {
-                path: '$productDetails',
-                preserveNullAndEmptyArrays: true
-            }
+          $lookup: {
+            from: "tblProduct",
+            localField: "ProductID",
+            foreignField: "ProductID",
+            as: "productDetails",
+          },
         },
         {
-            $lookup: {
-                from: 'tblProductColor',
-                localField: 'PrdColorCodeID',
-                foreignField: 'PrdColorCodeID',
-                as: 'colorDetails'
-            }
-        },
-        { 
-            $unwind: {
-                path: '$colorDetails',
-                preserveNullAndEmptyArrays: true
-            }
+          $unwind: {
+            path: "$productDetails",
+            preserveNullAndEmptyArrays: true,
+          },
         },
         {
-            $lookup: {
-                from: 'tblProductSize',
-                localField: 'PrdSizeID',
-                foreignField: 'PrdSizeID',
-                as: 'sizeDetails'
-            }
-        },
-        { 
-            $unwind: {
-                path: '$sizeDetails',
-                preserveNullAndEmptyArrays: true
-            }
-        },
-
-        // ✅ NEW: link tblcart.SplColorCodeIDPrKey with .SplColorCodeIDPrKey
-        {
-            $lookup: {
-                from: 'tblPrdSpecialColor',
-                localField: 'SplColorCodeIDPrKey',
-                foreignField: 'SplColorCodeIDPrKey',
-                as: 'specialColorDetails'
-            }
+          $lookup: {
+            from: "tblProductColor",
+            localField: "PrdColorCodeID",
+            foreignField: "PrdColorCodeID",
+            as: "colorDetails",
+          },
         },
         {
-            $unwind: {
-                path: '$specialColorDetails',
-                preserveNullAndEmptyArrays: true
-            }
+          $unwind: {
+            path: "$colorDetails",
+            preserveNullAndEmptyArrays: true,
+          },
         },
-
         {
-            $project: {
-                _id: 1,  
-                OrderRefNo: 1,
-                ProductID: 1,
-                Quantity: 1,
-                PrdAmount: 1,
-                ProductAmount: 1,
-                ProductQty: 1,
-                CartID: 1,
-                OrderTypeID: 1,
+          $lookup: {
+            from: "tblProductSize",
+            localField: "PrdSizeID",
+            foreignField: "PrdSizeID",
+            as: "sizeDetails",
+          },
+        },
+        {
+          $unwind: {
+            path: "$sizeDetails",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $lookup: {
+            from: "tblPrdSpecialColor",
+            localField: "SplColorCodeIDPrKey",
+            foreignField: "SplColorCodeIDPrKey",
+            as: "specialColorDetails",
+          },
+        },
+        {
+          $unwind: {
+            path: "$specialColorDetails",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $project: {
+            _id: 1,
+            OrderRefNo: 1,
+            ProductID: 1,
+            Quantity: 1,
+            PrdAmount: 1,
+            ProductAmount: 1,
+            ProductQty: 1,
+            CartID: 1,
+            OrderTypeID: 1,
 
-                // ✅ Keep cart special color key
-                SplColorCodeIDPrKey: { $ifNull: ['$SplColorCodeIDPrKey', ''] },
+            SplColorCodeIDPrKey: {
+              $ifNull: ["$SplColorCodeIDPrKey", ""],
+            },
 
-                PrdName: '$productDetails.PrdName',
-                PrdThumb: '$productDetails.PrdThumb',
-                Price: '$productDetails.Price',
-                ProductDescription: '$productDetails.ProductDescription',
-                
-                EnPrdColorName: '$colorDetails.EnPrdColorName',
-                ArPrdColorName: '$colorDetails.ArPrdColorName',
-                sigmacolorcode: { $ifNull: ['$colorDetails.sigmacolorcode', ''] },
-                
-                EnPrdSizeName: '$sizeDetails.EnPrdSizeName',
-                ArPrdSizeName: '$sizeDetails.ArPrdSizeName',
+            PrdName: "$productDetails.PrdName",
+            PrdThumb: "$productDetails.PrdThumb",
+            Price: "$productDetails.Price",
+            ProductDescription: "$productDetails.ProductDescription",
 
-                // ✅ NEW: special color fields, empty if no data
-                SpecialColorKeyCode: { $ifNull: ['$specialColorDetails.ColorKeyCode', ''] },
-                SpecialSplColorCodeID: { $ifNull: ['$specialColorDetails.SplColorCodeID', ''] },
-                SpecialHexValue: { $ifNull: ['$specialColorDetails.HexValue', ''] },
-                SpecialEnColorName: { $ifNull: ['$specialColorDetails.EnColorName', ''] },
-                SpecialArColorName: { $ifNull: ['$specialColorDetails.ArColorName', ''] }
-            }
+            EnPrdColorName: "$colorDetails.EnPrdColorName",
+            ArPrdColorName: "$colorDetails.ArPrdColorName",
+
+            // If special color exists, return its Sigma code.
+            // Otherwise, return normal product color Sigma code.
+            sigmacolorcode: {
+              $cond: [
+                {
+                  $and: [
+                    { $ne: [{ $ifNull: ["$specialColorDetails.ColorKeyCode", ""] }, ""] },
+                    { $ne: [{ $ifNull: ["$specialColorDetails.SplColorCodeID", ""] }, ""] },
+                  ],
+                },
+                "$specialColorDetails.SplColorCodeID",
+                { $ifNull: ["$colorDetails.sigmacolorcode", ""] },
+              ],
+            },
+
+            EnPrdSizeName: "$sizeDetails.EnPrdSizeName",
+            ArPrdSizeName: "$sizeDetails.ArPrdSizeName",
+
+            SpecialColorKeyCode: {
+              $ifNull: ["$specialColorDetails.ColorKeyCode", ""],
+            },
+            SpecialSplColorCodeID: {
+              $ifNull: ["$specialColorDetails.SplColorCodeID", ""],
+            },
+            SpecialHexValue: {
+              $ifNull: ["$specialColorDetails.HexValue", ""],
+            },
+            SpecialEnColorName: {
+              $ifNull: ["$specialColorDetails.EnColorName", ""],
+            },
+            SpecialArColorName: {
+              $ifNull: ["$specialColorDetails.ArColorName", ""],
+            },
+          },
+        },
+      ])
+      .toArray()
+      .then((documents) => {
+        for (const product of documents) {
+          product.PrdThumbImageUrl = ThumbUrl + (product.PrdThumb || "");
         }
-    ]).toArray()
-    .then(documents => {
 
-      for (const product of documents) {
-           product.PrdThumbImageUrl = ThumbUrl + product.PrdThumb;
-      }
-      
-      sendResponse(res, "Cart Found.", null, documents);
-    })
-    .catch(err => {
+        sendResponse(res, "Cart Found.", null, documents);
+      })
+      .catch((err) => {
         console.log(err);
         sendResponse(res, "Error fetching cart and product details.", null, []);
-    });
-
+      });
   } catch (error) {
     console.log(error);
     next(error);
