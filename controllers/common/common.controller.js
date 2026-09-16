@@ -164,33 +164,26 @@ exports.getProduct = async (req, res, next) => {
  
  exports.getColor = async (req, res, next) => {
   try {
-    const ProductID = req.body.ProductID || "";
+    const ProductID = req.body.ProductID;
+    const query = { productId: ProductID };
 
     const db = await connectToMongoDB();
 
     const items = await db
       .collection("tblPrdSpecialColor")
-      .find({ ProductID })
+      .find(query)
       .toArray();
 
-    const colorList = await Promise.all(
-      items.map(async (item) => {
-        const colorCode = await db.collection("tblPrdColorCode").findOne({
-          PrdColorCode: item.HexValue
-        });
-
-        return {
-          ...item,
-          sigmacolorcode: item.SplColorCodeID || "",
-          PCID: colorCode?.PCID || 0,
-          PrdColorCodeID: colorCode?.PrdColorCodeID || "",
-          PrdColorCode: colorCode?.PrdColorCode || item.HexValue || "",
-          PrdColorType: colorCode?.PrdColorType || "",
-          EnPrdColorName: colorCode?.EnPrdColorName || item.EnColorName || "",
-          ArPrdColorName: colorCode?.ArPrdColorName || item.ArColorName || ""
-        };
-      })
-    );
+    const colorList = items.map((item) => ({
+      ...item,
+      sigmacolorcode: item.SplColorCodeID || "",
+      PCID: item.PCID || 0,
+      PrdColorCodeID: item.PrdColorCodeID || "",
+      PrdColorCode: item.PrdColorCode || "",
+      PrdColorType: item.PrdColorType || "",
+      EnPrdColorName: item.EnPrdColorName || item.EnColorName || "",
+      ArPrdColorName: item.ArPrdColorName || item.ArColorName || ""
+    }));
 
     sendResponse(res, "Data fetched successfully.", null, colorList);
   } catch (error) {
