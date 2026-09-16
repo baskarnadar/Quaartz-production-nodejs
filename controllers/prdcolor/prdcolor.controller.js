@@ -30,7 +30,7 @@ exports.getprdcolorbyidgroup = async (req, res, next) => {
     next(error);
   }
 };
-exports.getprdcolorbyid = async (req, res, next) => {
+ exports.getprdcolorbyid = async (req, res, next) => {
   try {
     const ProductID = req.body.ProductID;
 
@@ -57,8 +57,6 @@ exports.getprdcolorbyid = async (req, res, next) => {
     for (const color of productColors) {
       const ColorKeyCode = String(color.ColorKeyCode || "").trim();
 
-      // If .ColorKeyCode exists:
-      // get Sigma Color Code from tblPrdSpecialColor.SplColorCodeID
       if (ColorKeyCode !== "") {
         const specialColors = await specialColorCollection
           .find({ ColorKeyCode })
@@ -68,33 +66,36 @@ exports.getprdcolorbyid = async (req, res, next) => {
           specialColors.forEach((spColor) => {
             finalColors.push({
               _id: spColor._id,
-              EnPrdColorName: spColor.EnColorName || "",
-              ArPrdColorName: spColor.ArColorName || "",
-              PrdColorCode: spColor.SplColorCodeID || "",
+              EnPrdColorName: spColor.EnColorName || spColor.EnPrdColorName || "",
+              ArPrdColorName: spColor.ArColorName || spColor.ArPrdColorName || "",
               ProductID,
-              PrdColorCodeID: spColor.SplColorCodeIDPrKey || "",
 
+              // Color value from tblPrdSpecialColor
+              HexValue: spColor.HexValue || "",
+              PrdColorCode: spColor.HexValue || "",
+
+              PrdColorCodeID: spColor.SplColorCodeIDPrKey || "",
               SplColorCodeID: spColor.SplColorCodeID || "",
               SplColorCodeIDPrKey: spColor.SplColorCodeIDPrKey || "",
               ColorKeyCode: spColor.ColorKeyCode || ColorKeyCode,
 
-              // Special color: take Sigma code from tblPrdSpecialColor
+              // Sigma Color Code
               sigmacolorcode: spColor.SplColorCodeID || "",
             });
           });
         } else {
-          // ColorKeyCode exists but no matching special color found
           finalColors.push({
             ...color,
+            HexValue: color.HexValue || "",
             SplColorCodeID: color.SplColorCodeID || "",
             ColorKeyCode: color.ColorKeyCode || "",
             sigmacolorcode: color.sigmacolorcode || "",
           });
         }
       } else {
-        // Normal color: take Sigma code from  
         finalColors.push({
           ...color,
+          HexValue: color.HexValue || "",
           SplColorCodeID: color.SplColorCodeID || "",
           ColorKeyCode: color.ColorKeyCode || "",
           sigmacolorcode: color.sigmacolorcode || "",
