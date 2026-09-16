@@ -178,9 +178,9 @@ exports.getProduct = async (req, res, next) => {
       ...item,
       sigmacolorcode: item.SplColorCodeID || "",
       PCID: item.PCID || 0,
-      PrdColorCodeID: item.PrdColorCodeID || "",
-      PrdColorCode: item.PrdColorCode || "",
-      PrdColorType: item.PrdColorType || "",
+      PrdColorCodeID: item.SplColorCodeIDPrKey || "",
+      PrdColorCode: item.HexValue || "",
+      PrdColorType: "ALLCOLOR",
       EnPrdColorName: item.EnPrdColorName || item.EnColorName || "",
       ArPrdColorName: item.ArPrdColorName || item.ArColorName || ""
     }));
