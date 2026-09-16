@@ -172,6 +172,7 @@ exports.getProduct = async (req, res, next) => {
     const items = await db
       .collection("tblPrdSpecialColor")
       .find(query)
+      .limit(100)
       .toArray();
 
     const colorList = items.map((item) => ({
