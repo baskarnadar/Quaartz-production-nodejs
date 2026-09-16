@@ -164,20 +164,33 @@ exports.getProduct = async (req, res, next) => {
  
  exports.getColor = async (req, res, next) => {
   try {
-    const ProductID = req.body.ProductID;
-    const query = { productId: ProductID };
+    const ProductID = req.body.ProductID || "";
 
     const db = await connectToMongoDB();
 
     const items = await db
-      .collection('tblPrdSpecialColor')
-      .find(query)
+      .collection("tblPrdSpecialColor")
+      .find({ ProductID })
       .toArray();
 
-    const colorList = items.map((item) => ({
-      ...item,
-      sigmacolorcode: item.SplColorCodeID || ""
-    }));
+    const colorList = await Promise.all(
+      items.map(async (item) => {
+        const colorCode = await db.collection("tblPrdColorCode").findOne({
+          PrdColorCode: item.HexValue
+        });
+
+        return {
+          ...item,
+          sigmacolorcode: item.SplColorCodeID || "",
+          PCID: colorCode?.PCID || 0,
+          PrdColorCodeID: colorCode?.PrdColorCodeID || "",
+          PrdColorCode: colorCode?.PrdColorCode || item.HexValue || "",
+          PrdColorType: colorCode?.PrdColorType || "",
+          EnPrdColorName: colorCode?.EnPrdColorName || item.EnColorName || "",
+          ArPrdColorName: colorCode?.ArPrdColorName || item.ArColorName || ""
+        };
+      })
+    );
 
     sendResponse(res, "Data fetched successfully.", null, colorList);
   } catch (error) {
