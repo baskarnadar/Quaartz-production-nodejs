@@ -161,43 +161,13 @@ exports.getProduct = async (req, res, next) => {
 };
 
 
-exports.OldgetProduct = async (req, res, next) => {
-  try {
-    const url =process.env.IMAGEURL+"product/";
-    const db = await connectToMongoDB();
-    const items = await db.collection('tblProduct').find().toArray();
-   
-    const GridListUrl=url+"images/"
-    const LargeUrl=url+"images/"
-    const ThumbUrl=url+"images/"
-    const BannerUrl=url+"images/"
-
-    for (const product of items) {
-         
-      product.PrdGridListUrl = GridListUrl+product.PrdGridList;
-      product.PrdThumbImageUrl = ThumbUrl+product.PrdThumb;
-      product.PrdLargeImageUrl = LargeUrl+product.PrdLarge;
-      product.PrdBannerImageUrl =BannerUrl+ product.PrdBanner;
-      
-     
-      product.PrdGridList = GridListUrl+product.PrdGridList;
-      product.PrdThumbImage = ThumbUrl+product.PrdThumb;
-      product.PrdLargeImage = LargeUrl+product.PrdLarge;
-      product.PrdBannerImage =BannerUrl+ product.PrdBanner;
-      
-  } 
-    sendResponse(res, "Data fetched successfully .", null , items);
-  } catch (error) {
-    console.log(error);
-    next(error);
-  }
-};
+ 
 exports.getColor = async (req, res, next) => {
   try {
     const ProductID = req.body.ProductID;
     const query = { productId: ProductID };
     const db = await connectToMongoDB();
-    const items = await db.collection('tblProductColor').find().toArray();
+    const items = await db.collection('tblPrdSpecialColor').find().toArray();
     sendResponse(res, "Data fetched successfully .", null , items);
   } catch (error) {
     console.log(error);

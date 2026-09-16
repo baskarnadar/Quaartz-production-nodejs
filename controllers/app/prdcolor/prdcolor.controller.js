@@ -310,7 +310,7 @@ function sendResponse(res, message, error, results) {
             $project: {
               _id: 1,
 
-              // tblProductColor fields
+              //  fields
               PCID: 1,
               PrdColorCodeID: 1,
               ProductID: 1,

@@ -44,7 +44,7 @@ exports.getallproductsize = async (req, res, next) => {
     // =========================================================
     // OPTIONAL LOGIC:
     // If ColorKeyCode exists, fetch matching PrdColorCodeID
-    // from tblProductColor
+    // from 
     // =========================================================
     if (ColorKeyCodeVal !== "") {
       const colorCollection = db.collection('tblProductColor');

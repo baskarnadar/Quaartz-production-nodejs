@@ -57,7 +57,7 @@ exports.getprdcolorbyid = async (req, res, next) => {
     for (const color of productColors) {
       const ColorKeyCode = String(color.ColorKeyCode || "").trim();
 
-      // If tblProductColor.ColorKeyCode exists:
+      // If .ColorKeyCode exists:
       // get Sigma Color Code from tblPrdSpecialColor.SplColorCodeID
       if (ColorKeyCode !== "") {
         const specialColors = await specialColorCollection
@@ -92,7 +92,7 @@ exports.getprdcolorbyid = async (req, res, next) => {
           });
         }
       } else {
-        // Normal color: take Sigma code from tblProductColor
+        // Normal color: take Sigma code from  
         finalColors.push({
           ...color,
           SplColorCodeID: color.SplColorCodeID || "",
