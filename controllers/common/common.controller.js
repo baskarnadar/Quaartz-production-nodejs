@@ -165,7 +165,10 @@ exports.getProduct = async (req, res, next) => {
  exports.getColor = async (req, res, next) => {
   try {
     const ProductID = req.body.ProductID;
-    const query = { productId: ProductID };
+    const query = {
+      productId: ProductID,
+      SplColorCodeID: { $exists: true, $nin: [null, ""] }
+    };
 
     const db = await connectToMongoDB();
 
@@ -177,7 +180,7 @@ exports.getProduct = async (req, res, next) => {
 
     const colorList = items.map((item) => ({
       ...item,
-      sigmacolorcode: item.SplColorCodeID || "",
+      sigmacolorcode: item.SplColorCodeID,
       PCID: item.PCID || 0,
       PrdColorCodeID: item.SplColorCodeIDPrKey || "",
       PrdColorCode: item.HexValue || "",
