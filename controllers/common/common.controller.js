@@ -162,13 +162,24 @@ exports.getProduct = async (req, res, next) => {
 
 
  
-exports.getColor = async (req, res, next) => {
+ exports.getColor = async (req, res, next) => {
   try {
     const ProductID = req.body.ProductID;
     const query = { productId: ProductID };
+
     const db = await connectToMongoDB();
-    const items = await db.collection('tblPrdSpecialColor').find().toArray();
-    sendResponse(res, "Data fetched successfully .", null , items);
+
+    const items = await db
+      .collection('tblPrdSpecialColor')
+      .find(query)
+      .toArray();
+
+    const colorList = items.map((item) => ({
+      ...item,
+      sigmacolorcode: item.SplColorCodeID || ""
+    }));
+
+    sendResponse(res, "Data fetched successfully.", null, colorList);
   } catch (error) {
     console.log(error);
     next(error);
