@@ -185,11 +185,11 @@ exports.getProduct = async (req, res, next) => {
       PrdColorCodeID: item.SplColorCodeIDPrKey || "",
       PrdColorCode: item.HexValue || "",
       PrdColorType: "ALLCOLOR",
-     // EnPrdColorName: item.EnPrdColorName || item.EnColorName || "",
-     // ArPrdColorName: item.ArPrdColorName || item.ArColorName || ""
+      EnPrdColorName: item.EnPrdColorName || item.EnColorName || "",
+      ArPrdColorName: item.ArPrdColorName || item.ArColorName || "",
 
-       EnPrdColorName:  "",
-      ArPrdColorName:  ""
+       ArColorName:   "",
+      EnColorName:  ""
     }));
 
     sendResponse(res, "Data fetched successfully.", null, colorList);
