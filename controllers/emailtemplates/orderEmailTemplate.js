@@ -7,7 +7,8 @@
 // ctx = {
 //   CustomerName, CustomerEmail, CustomerMobile, CustomerCity,
 //   UserOrderNo, OrderRefNo, DeliveryType, StoreName, StoreAddress,
-//   Items: [{ Name, ColorName, HexValue, SizeName, Qty, Amount, LineTotal, Thumb }],
+//   Items: [{ Name, ColorCode, HexValue, SizeName, Qty, Amount, LineTotal }],
+//     ColorCode = tblPrdSpecialColor.SplColorCodeID (never a colour NAME)
 //   OrderTotal, PlacedAt
 // }
 
@@ -83,8 +84,15 @@ function itemRows(items) {
                        vertical-align:middle;margin-right:6px;"></span>`
         : "";
 
+      // Colour is shown as a CODE only - never EnColorName / ArColorName.
       const meta = [
-        item.ColorName ? `${swatch}${escapeHtml(item.ColorName)}` : "",
+        item.ColorCode
+          ? `${swatch}<span style="font-family:Consolas,Menlo,monospace;background:${BRAND.tint};
+                          border:1px solid ${BRAND.line};border-radius:4px;padding:1px 7px;
+                          color:${BRAND.navy};font-weight:700;letter-spacing:0.4px;">${escapeHtml(
+              item.ColorCode
+            )}</span>`
+          : "",
         item.SizeName ? escapeHtml(item.SizeName) : "",
       ]
         .filter(Boolean)
@@ -267,7 +275,7 @@ function plainItems(items) {
     .map(
       (i, n) =>
         `  ${n + 1}. ${i.Name || "Product"}` +
-        `${i.ColorName ? ` / ${i.ColorName}` : ""}` +
+        `${i.ColorCode ? ` / Colour ${i.ColorCode}` : ""}` +
         `${i.SizeName ? ` / ${i.SizeName}` : ""}` +
         ` x ${i.Qty} = ${money(i.LineTotal)}`
     )

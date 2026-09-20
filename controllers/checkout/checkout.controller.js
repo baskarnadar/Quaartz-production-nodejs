@@ -175,16 +175,39 @@ async function buildOrderEmailContext(db, args) {
   } = args;
 
   // --- customer -----------------------------------------------------------
+  // Pull the whole record (minus the secrets) - the city field name varies,
+  // so we cannot rely on a fixed projection here.
   const user =
     (await db.collection("tblreginfo").findOne(
       { RegUserID: RegUserIDVal },
-      { projection: { _id: 0, RegFullName: 1, RegEmailAddress: 1, RegMobileNo: 1, RegCityID: 1 } }
+      { projection: { _id: 0, RegPassword: 0, RegOtpNo: 0 } }
     )) || {};
 
+  // The city may be stored as an ID or already as a plain name, under any of
+  // several field names. Take the first non-empty one, then try to resolve it
+  // against tblcity; if that fails, assume it is already the name.
+  const cityRaw = String(
+    user.RegCityID ??
+      user.CityID ??
+      user.RegCity ??
+      user.RegCityName ??
+      user.City ??
+      user.CityName ??
+      ""
+  ).trim();
+
   let cityName = "";
-  if (user.RegCityID) {
-    const city = await db.collection("tblcity").findOne({ CityID: user.RegCityID });
-    cityName = city?.EnCityName || "";
+
+  if (cityRaw) {
+    try {
+      const city = await db.collection("tblcity").findOne({
+        $or: [{ CityID: cityRaw }, { EnCityName: cityRaw }],
+      });
+
+      cityName = city?.EnCityName || cityRaw;
+    } catch (err) {
+      cityName = cityRaw;
+    }
   }
 
   // --- store --------------------------------------------------------------
@@ -251,13 +274,18 @@ async function buildOrderEmailContext(db, args) {
 
     orderTotal += lineTotal;
 
-    // A special colour, when chosen, wins over the standard product colour.
-    const colorName = spl.EnColorName || color.EnPrdColorName || "";
-    const hexValue = spl.HexValue || color.HexValue || "";
+    // Colour is identified by its CODE only - never by EnColorName /
+    // ArColorName. tblPrdSpecialColor.SplColorCodeID is the value to use;
+    // tblProductColor.sigmacolorcode covers lines with no special colour.
+    const colorCode = spl.SplColorCodeID || color.sigmacolorcode || "";
+
+    // The hex is stored as HexValue on some rows and PrdColorCode on others.
+    const hexValue =
+      spl.HexValue || color.HexValue || color.PrdColorCode || "";
 
     return {
       Name: product.PrdName || "Product",
-      ColorName: colorName,
+      ColorCode: colorCode,
       HexValue: hexValue,
       SizeName: size.EnPrdSizeName || "",
       Qty: qty,
