@@ -265,3 +265,19 @@ exports.getstoreInfoByCityID = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.getadminemails = async (req, res, next) => {
+  try {
+    const db = await connectToMongoDB();
+
+    const items = await db
+      .collection("tblsetting")
+      .find({})
+      .toArray();
+
+    sendResponse(res, "Admin emails fetched successfully.", null, items);
+  } catch (error) {
+    console.log(error);
+    next(error);
+  }
+};
