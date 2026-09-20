@@ -175,7 +175,7 @@ const {
   adminOrderTemplate,
 } = require('../emailtemplates/orderEmailTemplate');
 
-const ADMIN_EMAIL_COLLECTION = String(process.env.ADMIN_EMAIL_COLLECTION || 'tbladminemail').trim();
+const ADMIN_EMAIL_COLLECTION = String(process.env.ADMIN_EMAIL_COLLECTION || 'tblsetting').trim();
 const ADMIN_EMAIL_API =
   String(process.env.ADMIN_EMAIL_API || 'https://api.sigmapaints.com/api/common/getadminemails').trim();
 
@@ -188,21 +188,46 @@ function splitEmails(value) {
 
 /**
  * Resolves the admin recipient list.
+ *
  * Order of preference:
- *   1. ADMIN_EMAILS in .env  (comma separated - fastest, no I/O)
- *   2. the admin-emails collection in Mongo
- *   3. the getadminemails HTTP endpoint
+ *   1. the getadminemails API   (POST - the source of truth)
+ *   2. the tblsetting collection in Mongo (fallback if the API is down)
+ *   3. ADMIN_EMAILS in .env               (last resort)
+ *
  * Never throws - returns [] if nothing can be resolved.
  *
  * @param {import('mongodb').Db} [db]
  * @returns {Promise<string[]>}
  */
 async function getAdminEmails(db) {
-  // 1. environment override
-  const fromEnv = splitEmails(process.env.ADMIN_EMAILS);
-  if (fromEnv.length) return [...new Set(fromEnv)];
+  // 1. the API -----------------------------------------------------------
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
 
-  // 2. database
+    const response = await fetch(ADMIN_EMAIL_API, {
+      method: 'POST',                                   // <- POST, not GET
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+      signal: controller.signal,
+    });
+
+    clearTimeout(timer);
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const payload = await response.json();
+    const rows = Array.isArray(payload?.data) ? payload.data : [];
+    const fromApi = rows.flatMap((row) => splitEmails(row?.adminemails));
+
+    if (fromApi.length) return [...new Set(fromApi)];
+
+    console.warn('ADMIN EMAIL API returned no usable addresses.');
+  } catch (err) {
+    console.error('ADMIN EMAIL API LOOKUP FAILED:', err?.message || err);
+  }
+
+  // 2. the database ------------------------------------------------------
   if (db) {
     try {
       const rows = await db.collection(ADMIN_EMAIL_COLLECTION).find({}).toArray();
@@ -213,24 +238,9 @@ async function getAdminEmails(db) {
     }
   }
 
-  // 3. HTTP endpoint
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
-
-    const response = await fetch(ADMIN_EMAIL_API, { signal: controller.signal });
-    clearTimeout(timer);
-
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const payload = await response.json();
-    const rows = Array.isArray(payload?.data) ? payload.data : [];
-    const fromApi = rows.flatMap((row) => splitEmails(row?.adminemails));
-
-    if (fromApi.length) return [...new Set(fromApi)];
-  } catch (err) {
-    console.error('ADMIN EMAIL API LOOKUP FAILED:', err?.message || err);
-  }
+  // 3. environment -------------------------------------------------------
+  const fromEnv = splitEmails(process.env.ADMIN_EMAILS);
+  if (fromEnv.length) return [...new Set(fromEnv)];
 
   return [];
 }
