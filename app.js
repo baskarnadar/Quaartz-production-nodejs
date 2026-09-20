@@ -38,6 +38,7 @@ var OrderStatusRoute = require('./controllers/orderstatus/orderstatus.route');
 var BannerRoute = require('./controllers/banner/banner.route');
 var MainMenuRoute = require('./controllers/admin/mainmenu/mainmenu.route');
 var SubMenuRoute = require('./controllers/admin/submenu/submenu.route');
+var adminemailRoute = require('./controllers/admin/adminemail/adminemail.route');
 
 /* ✅ SETTINGS ROUTE */
 var SettingRoute = require('./controllers/setting/setting.route');
@@ -109,6 +110,7 @@ app.use('/api/banner', BannerRoute);
 
 app.use('/api/mainmenu', MainMenuRoute);
 app.use('/api/submenu', SubMenuRoute);
+app.use('/api/adminemail', adminemailRoute);
 
 app.use('/api/lookupdata/city', CityRoute);
 app.use('/api/lookupdata/sgyear', YearRoute);
