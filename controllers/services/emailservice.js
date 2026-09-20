@@ -122,6 +122,52 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+// ---------------------------------------------------------------------------
+// Registration OTP email
+// ---------------------------------------------------------------------------
+const { registrationOtpTemplate } = require('../emailtemplates/registrationOtpTemplate');
+
+/**
+ * Sends the account-verification (OTP) email after a successful registration.
+ * @param {string} toEmail
+ * @param {object} ctx - { fullName, otp }
+ */
+async function sendRegistrationOtpEmail(toEmail, ctx = {}) {
+  const to = String(toEmail || '').trim().toLowerCase();
+  if (!to) throw new Error('Recipient email is required');
+
+  const otp = String(ctx.otp ?? '').trim();
+  if (!otp) throw new Error('otp is required');
+
+  const appName = String(process.env.APP_NAME || 'Sigma Paints');
+
+  const appUrl = String(process.env.APP_URL || 'https://sigmapaints.com').trim();
+  let host = 'sigmapaints.com';
+  try {
+    host = new URL(appUrl).host || host;
+  } catch (e) {
+    // keep default host
+  }
+
+  const from =
+    String(process.env.MAIL_FROM || '').trim() ||
+    `"${appName}" <no-reply@${host}>`;
+
+  const { subject, text, html } = registrationOtpTemplate({
+    FullName: ctx.fullName,
+    OTP: otp,
+  });
+
+  const info = await transporter.sendMail({ from, to, subject, text, html });
+
+  return {
+    messageId: info.messageId,
+    accepted: info.accepted,
+    rejected: info.rejected,
+  };
+}
+
 module.exports = {
   sendForgotPasswordEmail,
+  sendRegistrationOtpEmail,
 };

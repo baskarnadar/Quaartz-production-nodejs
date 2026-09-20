@@ -7,7 +7,7 @@ router.post("/createBanner", Common.createBanner);
 router.get("/getlang", Common.getlang);
 router.post("/createLang", Common.createLang);
 router.get("/getProduct", Common.getProduct);
-router.get("/getColor", Common.getColor); 
+router.get("/getColor", Common.getColor);  
 router.post("/addCity", Common.addCity);
 router.post("/getCity", Common.getCity);
 router.post("/getstoreInfoByCityID", Common.getstoreInfoByCityID);

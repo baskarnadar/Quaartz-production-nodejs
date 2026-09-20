@@ -1,5 +1,6 @@
 const { connectToMongoDB } = require("../../database/mongodb");
 const EmailService = require('../services/emailservice');
+const { sendRegistrationOtpEmail } = require('../services/emailservice');
 const crypto = require("crypto");
 const transporter = require('../email/mail');
 require('dotenv').config();
@@ -191,79 +192,111 @@ exports.updateaccount = async (req, res, next) => {
 
 
 exports.regaccount = async (req, res, next) => {
-// sample
-  var resultNew="";
-  const RegUserID = generateUniqueId();  // Assuming generateUniqueId is defined elsewhere
-  const RegOtpNo = generateOtp();  // Assuming generateOtp is defined elsewhere
-  
+  var resultNew = "";
+  const RegUserID = generateUniqueId();
+  const RegOtpNo = generateOtp();
+
   const RegMobileNoVal = req.body.RegMobileNo;
   const RegEmailAddressVal = req.body.RegEmailAddress;
   const RegPasswordVal = req.body.RegPassword;
- let pwdkey = "";
-    const value = RegEmailAddressVal + RegPasswordVal;
-    const md5Key = crypto.createHash("md5").update(value, "utf-8").digest();
-    for (let i = 0; i < md5Key.length; i++) {
-      pwdkey += md5Key[i];
-    }
+  const RegFullNameVal = req.body.RegFullName;
+
+  let pwdkey = "";
+  const value = RegEmailAddressVal + RegPasswordVal;
+  const md5Key = crypto.createHash("md5").update(value, "utf-8").digest();
+  for (let i = 0; i < md5Key.length; i++) {
+    pwdkey += md5Key[i];
+  }
+
   try {
-    // Connect to the database
     const db = await connectToMongoDB();
-    
-    // Check if the mobile number or email address already exists
-    const existingMobile = await db.collection('tblreginfo').findOne({ RegMobileNo: RegMobileNoVal });
-    const existingEmail = await db.collection('tblreginfo').findOne({ RegEmailAddress: RegEmailAddressVal });
 
-    // If mobile number exists
-    if (existingMobile) { 
+    const existingMobile = await db
+      .collection("tblreginfo")
+      .findOne({ RegMobileNo: RegMobileNoVal });
+    const existingEmail = await db
+      .collection("tblreginfo")
+      .findOne({ RegEmailAddress: RegEmailAddressVal });
 
-      resultNew={ status : 'MOBILE-EXIST'}
-     return  res.status(500).json({
-        'statusCode': 500,
-        'message': 'message',
-        'data': resultNew,
-        'error': 'error',
-      }); 
-    }
-
-    // If email address exists
-    if (existingEmail) { 
-      resultNew={ status : 'EMAIL-EXIST'}
-      return  res.status(500).json({
-        'statusCode': 500,
-        'message': 'message',
-        'data': resultNew,
-        'error': 'error',
+    if (existingMobile) {
+      resultNew = { status: "MOBILE-EXIST" };
+      return res.status(500).json({
+        statusCode: 500,
+        message: "message",
+        data: resultNew,
+        error: "error",
       });
     }
-    // If both are unique, proceed with registration
+
+    if (existingEmail) {
+      resultNew = { status: "EMAIL-EXIST" };
+      return res.status(500).json({
+        statusCode: 500,
+        message: "message",
+        data: resultNew,
+        error: "error",
+      });
+    }
+
     const updatedData = {
       ...req.body,
-      createdBy: "", 
-      createdAt: new Date(),    
-      modifiedBy: "", 
-      modifiedAt: new Date(),  
-      RegStatus: 'NOTACTIVE', 
-      OTPStatus: 'NOTVERIFY',    
-      RegUserID: RegUserID,     
-      RegOtpNo: RegOtpNo,      
-      RegPassword: pwdkey  
+      createdBy: "",
+      createdAt: new Date(),
+      modifiedBy: "",
+      modifiedAt: new Date(),
+      RegStatus: "NOTACTIVE",
+      OTPStatus: "NOTVERIFY",
+      RegUserID: RegUserID,
+      RegOtpNo: RegOtpNo,
+      RegPassword: pwdkey,
     };
 
- 
-    const result = await db.collection('tblreginfo').insertOne(updatedData);
+    const result = await db.collection("tblreginfo").insertOne(updatedData);
+
     result.reguserid = RegUserID;
-    result.otp = RegOtpNo;
-    result.status="OK";
-   
-    sendResponse(res, "Registration successfully.", null, result);
-    
+    result.otp = RegOtpNo; // NOTE: see comment at the bottom of this file
+    result.status = "OK";
+
+    // -----------------------------------------------------------------
+    // Send the verification email.
+    // Registration is already saved, so a mail failure must NOT fail the
+    // request - we only report it back as emailSent / emailMessage.
+    // -----------------------------------------------------------------
+    const toEmail = String(RegEmailAddressVal || "").trim();
+
+    result.emailSent = false;
+    result.emailMessage = "";
+
+    if (!toEmail) {
+      result.emailMessage = "No email address supplied, verification email not sent.";
+    } else {
+      try {
+        await sendRegistrationOtpEmail(toEmail, {
+          fullName: RegFullNameVal,
+          otp: RegOtpNo,
+        });
+
+        result.emailSent = true;
+        result.emailMessage = "Verification email sent.";
+      } catch (emailError) {
+        console.error("REGISTRATION OTP EMAIL ERROR:", emailError?.message || emailError);
+        result.emailMessage =
+          "Registration saved, but the verification email could not be sent.";
+      }
+    }
+
+    const message = result.emailSent
+      ? "Registration successfully. Verification code sent to your email."
+      : "Registration successfully.";
+
+    sendResponse(res, message, null, result);
   } catch (error) {
     console.log(error);
-    next(error);  // Pass the error to the next middleware
+    next(error);
   }
 };
 
- 
+
 exports.regaccountOld = async (req, res, next) => { 
   const RegUserID = generateUniqueId();
   const RegOtpNo = generateOtp();
