@@ -13,6 +13,6 @@ router.post("/addCity", Common.addCity);
 router.post("/getCity", Common.getCity);
 router.post("/getstoreInfoByCityID", Common.getstoreInfoByCityID);
 router.post("/menulist", Common.menulist);
-router.post("/getadminemails", protectAPI,Common.getadminemails);
+router.post("/getadminemails", Common.getadminemails);
 module.exports = router;
 
