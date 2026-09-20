@@ -936,16 +936,19 @@ exports.getorderbyorderrefnonew = async (req, res, next) => {
                             $ifNull: ["$$matchingColor.ArPrdColorName", ""],
                           },
 
-                          // Use the special colour Sigma code when a special
-                          // colour has been selected; otherwise use the normal
-                          // product colour Sigma code.
+                          // Colour code shown everywhere (panel + emails).
+                          // tblPrdSpecialColor.SplColorCodeID always wins when
+                          // a special colour exists; the standard product
+                          // colour code is only the fallback.
+                          // (Previously gated on ColorKeyCode, which hid the
+                          // special code whenever that field was empty.)
                           sigmacolorcode: {
                             $cond: [
                               {
                                 $ne: [
                                   {
                                     $ifNull: [
-                                      "$$matchingSpecialColor.ColorKeyCode",
+                                      "$$matchingSpecialColor.SplColorCodeID",
                                       "",
                                     ],
                                   },
@@ -965,6 +968,38 @@ exports.getorderbyorderrefnonew = async (req, res, next) => {
                                 ],
                               },
                             ],
+                          },
+
+                          // Hex for the swatch: special colour first, then the
+                          // standard colour (HexValue or PrdColorCode).
+                          ColorHexValue: {
+                            $let: {
+                              vars: {
+                                h: {
+                                  $ifNull: [
+                                    "$$matchingSpecialColor.HexValue",
+                                    "",
+                                  ],
+                                },
+                              },
+                              in: {
+                                $cond: [
+                                  { $ne: ["$$h", ""] },
+                                  "$$h",
+                                  {
+                                    $ifNull: [
+                                      "$$matchingColor.HexValue",
+                                      {
+                                        $ifNull: [
+                                          "$$matchingColor.PrdColorCode",
+                                          "",
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                ],
+                              },
+                            },
                           },
 
                           SpecialColorSplColorCodeIDPrKey: {
@@ -1035,6 +1070,13 @@ exports.getorderbyorderrefnonew = async (req, res, next) => {
                 else: [{ $ifNull: ["$storedetails", []] }],
               },
             },
+          },
+        },
+        {
+          // Never ship credentials to the browser.
+          $project: {
+            "userDetails.RegPassword": 0,
+            "userDetails.RegOtpNo": 0,
           },
         },
       ])
