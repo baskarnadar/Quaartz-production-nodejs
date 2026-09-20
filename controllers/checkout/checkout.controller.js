@@ -129,6 +129,7 @@ exports.checkout = async (req, res, next) => {
         OrderRefNoVal,
         UserOrderNoVal,
         DeliveryTypeIDVal,
+        PickUpCityIDVal,
         PickUpStoreIDVal,
         cartItems,
       });
@@ -170,6 +171,7 @@ async function buildOrderEmailContext(db, args) {
     OrderRefNoVal,
     UserOrderNoVal,
     DeliveryTypeIDVal,
+    PickUpCityIDVal,
     PickUpStoreIDVal,
     cartItems,
   } = args;
@@ -183,46 +185,33 @@ async function buildOrderEmailContext(db, args) {
       { projection: { _id: 0, RegPassword: 0, RegOtpNo: 0 } }
     )) || {};
 
-  // The city may be stored as an ID or already as a plain name, under any of
-  // several field names. Take the first non-empty one, then try to resolve it
-  // against tblcity; if that fails, assume it is already the name.
-  const cityRaw = String(
-    user.RegCityID ??
-      user.CityID ??
-      user.RegCity ??
-      user.RegCityName ??
-      user.City ??
-      user.CityName ??
-      ""
-  ).trim();
-
-  let cityName = "";
-
-  if (cityRaw) {
-    try {
-      const city = await db.collection("tblcity").findOne({
-        $or: [{ CityID: cityRaw }, { EnCityName: cityRaw }],
-      });
-
-      cityName = city?.EnCityName || cityRaw;
-    } catch (err) {
-      cityName = cityRaw;
-    }
-  }
-
   // --- store --------------------------------------------------------------
+  // Fetched before the city, because the store record is one of the places
+  // the city can come from.
+  let store = null;
   let storeName = "";
   let storeAddress = "";
 
   if (PickUpStoreIDVal) {
-    const store = await db.collection("tblstoreinfo").findOne({
-      $expr: { $eq: [{ $toString: "$StoreCodeID" }, String(PickUpStoreIDVal)] },
-    });
+    try {
+      store = await db.collection("tblstoreinfo").findOne({
+        $expr: { $eq: [{ $toString: "$StoreCodeID" }, String(PickUpStoreIDVal)] },
+      });
 
-    storeName = store?.EnStoreName || store?.StoreName || "";
-    // NOTE: the field really is spelled "StoreAdress" in tblstoreinfo.
-    storeAddress = store?.StoreAdress || store?.StoreAddress || "";
+      storeName = store?.EnStoreName || store?.StoreName || "";
+      // NOTE: the field really is spelled "StoreAdress" in tblstoreinfo.
+      storeAddress = store?.StoreAdress || store?.StoreAddress || "";
+    } catch (err) {
+      console.error("STORE LOOKUP FAILED:", err?.message || err);
+    }
   }
+
+  // --- city ---------------------------------------------------------------
+  const cityName = await resolveCityName(db, {
+    user,
+    PickUpCityIDVal,
+    store,
+  });
 
   // --- lookups for the line items ----------------------------------------
   const productIds = [...new Set(cartItems.map((i) => i.ProductID).filter(Boolean))];
@@ -317,4 +306,67 @@ async function buildOrderEmailContext(db, args) {
       minute: "2-digit",
     }),
   };
+}
+
+/**
+ * Works out a display city name, trying every source in turn:
+ *   1. a city field on the user record (an ID or already a name)
+ *   2. the order's PickUpCityID against tblcity
+ *   3. a city field on the store record (an ID or already a name)
+ * Returns "" when nothing resolves. Never throws.
+ */
+async function resolveCityName(db, { user = {}, PickUpCityIDVal, store }) {
+  const cities = db.collection("tblcity");
+
+  // Reads whichever name field tblcity actually uses.
+  const nameOf = (row) =>
+    String(row?.EnCityName || row?.CityName || row?.ArCityName || "").trim();
+
+  // Takes an unknown value: looks it up as an ID, then as a name, and
+  // finally accepts it as-is if it is already a plain string name.
+  const resolve = async (value) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "";
+
+    try {
+      const row = await cities.findOne({
+        $or: [
+          { CityID: raw },
+          { EnCityName: raw },
+          { CityName: raw },
+          { ArCityName: raw },
+        ],
+      });
+
+      if (row) return nameOf(row) || raw;
+    } catch (err) {
+      console.error("CITY LOOKUP FAILED:", err?.message || err);
+    }
+
+    // Not an ID we know. If it contains a letter, treat it as the name.
+    return /[a-z\u0600-\u06FF]/i.test(raw) ? raw : "";
+  };
+
+  // 1. the user record
+  const fromUser = await resolve(
+    user.RegCityID ??
+      user.CityID ??
+      user.RegCity ??
+      user.RegCityName ??
+      user.City ??
+      user.CityName
+  );
+  if (fromUser) return fromUser;
+
+  // 2. the order's pickup city
+  const fromOrder = await resolve(PickUpCityIDVal);
+  if (fromOrder) return fromOrder;
+
+  // 3. the store record
+  const fromStore = await resolve(
+    store?.CityID ?? store?.EnCityName ?? store?.CityName ?? store?.StoreCity
+  );
+  if (fromStore) return fromStore;
+
+  return "";
 }
