@@ -161,8 +161,7 @@ exports.getProduct = async (req, res, next) => {
 };
 
 
- 
- exports.getColor = async (req, res, next) => {
+  exports.getColor = async (req, res, next) => {
   try {
     const ProductID = req.body.ProductID;
     const query = {
@@ -175,7 +174,6 @@ exports.getProduct = async (req, res, next) => {
     const items = await db
       .collection("tblPrdSpecialColor")
       .find(query)
-      .limit(100)
       .toArray();
 
     const colorList = items.map((item) => ({
@@ -185,14 +183,11 @@ exports.getProduct = async (req, res, next) => {
       PrdColorCodeID: item.SplColorCodeIDPrKey || "",
       PrdColorCode: item.HexValue || "",
       PrdColorType: "ALLCOLOR",
-     // EnPrdColorName: item.EnPrdColorName || item.EnColorName || "",
-     // ArPrdColorName: item.ArPrdColorName || item.ArColorName || "",
       EnPrdColorName: item.SplColorCodeID || "",
       ArPrdColorName: item.SplColorCodeID || "",
-       ArColorName:  item.SplColorCodeID || "",
+      ArColorName: item.SplColorCodeID || "",
       EnColorName: item.SplColorCodeID || "",
-      HexValue: "",
-     
+      HexValue: ""
     }));
 
     sendResponse(res, "Data fetched successfully.", null, colorList);
