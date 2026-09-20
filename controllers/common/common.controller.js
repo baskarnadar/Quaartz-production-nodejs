@@ -187,10 +187,10 @@ exports.getProduct = async (req, res, next) => {
       PrdColorType: "ALLCOLOR",
      // EnPrdColorName: item.EnPrdColorName || item.EnColorName || "",
      // ArPrdColorName: item.ArPrdColorName || item.ArColorName || "",
- EnPrdColorName: "",
-      ArPrdColorName: "",
-       ArColorName:   "",
-      EnColorName:  ""
+      EnPrdColorName: item.SplColorCodeIDPrKey || "",
+      ArPrdColorName: item.SplColorCodeIDPrKey || "",
+       ArColorName:  item.SplColorCodeIDPrKey || "",
+      EnColorName: item.SplColorCodeIDPrKey || "",
     }));
 
     sendResponse(res, "Data fetched successfully.", null, colorList);
