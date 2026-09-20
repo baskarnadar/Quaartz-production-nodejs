@@ -192,7 +192,7 @@ exports.getProduct = async (req, res, next) => {
        ArColorName:  item.SplColorCodeID || "",
       EnColorName: item.SplColorCodeID || "",
       HexValue: "",
-      PrdColorCode : ""
+     
     }));
 
     sendResponse(res, "Data fetched successfully.", null, colorList);
