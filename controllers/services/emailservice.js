@@ -167,7 +167,153 @@ async function sendRegistrationOtpEmail(toEmail, ctx = {}) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Order emails (customer + admin)
+// ---------------------------------------------------------------------------
+const {
+  customerOrderTemplate,
+  adminOrderTemplate,
+} = require('../emailtemplates/orderEmailTemplate');
+
+const ADMIN_EMAIL_COLLECTION = String(process.env.ADMIN_EMAIL_COLLECTION || 'tbladminemail').trim();
+const ADMIN_EMAIL_API =
+  String(process.env.ADMIN_EMAIL_API || 'https://api.sigmapaints.com/api/common/getadminemails').trim();
+
+function splitEmails(value) {
+  return String(value || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter((e) => e.includes('@'));
+}
+
+/**
+ * Resolves the admin recipient list.
+ * Order of preference:
+ *   1. ADMIN_EMAILS in .env  (comma separated - fastest, no I/O)
+ *   2. the admin-emails collection in Mongo
+ *   3. the getadminemails HTTP endpoint
+ * Never throws - returns [] if nothing can be resolved.
+ *
+ * @param {import('mongodb').Db} [db]
+ * @returns {Promise<string[]>}
+ */
+async function getAdminEmails(db) {
+  // 1. environment override
+  const fromEnv = splitEmails(process.env.ADMIN_EMAILS);
+  if (fromEnv.length) return [...new Set(fromEnv)];
+
+  // 2. database
+  if (db) {
+    try {
+      const rows = await db.collection(ADMIN_EMAIL_COLLECTION).find({}).toArray();
+      const fromDb = rows.flatMap((row) => splitEmails(row?.adminemails));
+      if (fromDb.length) return [...new Set(fromDb)];
+    } catch (err) {
+      console.error('ADMIN EMAIL DB LOOKUP FAILED:', err?.message || err);
+    }
+  }
+
+  // 3. HTTP endpoint
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch(ADMIN_EMAIL_API, { signal: controller.signal });
+    clearTimeout(timer);
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const payload = await response.json();
+    const rows = Array.isArray(payload?.data) ? payload.data : [];
+    const fromApi = rows.flatMap((row) => splitEmails(row?.adminemails));
+
+    if (fromApi.length) return [...new Set(fromApi)];
+  } catch (err) {
+    console.error('ADMIN EMAIL API LOOKUP FAILED:', err?.message || err);
+  }
+
+  return [];
+}
+
+function resolveFrom() {
+  const appName = String(process.env.APP_NAME || 'Sigma Paints');
+  const appUrl = String(process.env.APP_URL || 'https://sigmapaints.com').trim();
+
+  let host = 'sigmapaints.com';
+  try {
+    host = new URL(appUrl).host || host;
+  } catch (e) {
+    // keep default host
+  }
+
+  return String(process.env.MAIL_FROM || '').trim() || `"${appName}" <no-reply@${host}>`;
+}
+
+/**
+ * Sends the order confirmation to the customer AND the notification to admins.
+ * Each send is isolated - one failing does not stop the other.
+ *
+ * @param {object} ctx  - the order context (see orderEmailTemplate.js)
+ * @param {object} opts - { customerEmail, adminEmails }
+ * @returns {Promise<{customerSent:boolean, adminSent:boolean, adminRecipients:string[], errors:string[]}>}
+ */
+async function sendOrderEmails(ctx = {}, opts = {}) {
+  const from = resolveFrom();
+  const out = { customerSent: false, adminSent: false, adminRecipients: [], errors: [] };
+
+  // --- customer -------------------------------------------------------
+  const customerEmail = String(opts.customerEmail || ctx.CustomerEmail || '').trim().toLowerCase();
+
+  if (!customerEmail) {
+    out.errors.push('No customer email address on the order.');
+  } else {
+    try {
+      const mail = customerOrderTemplate(ctx);
+      await transporter.sendMail({
+        from,
+        to: customerEmail,
+        subject: mail.subject,
+        text: mail.text,
+        html: mail.html,
+      });
+      out.customerSent = true;
+    } catch (err) {
+      console.error('ORDER CUSTOMER EMAIL ERROR:', err?.message || err);
+      out.errors.push('Customer email failed.');
+    }
+  }
+
+  // --- admins ---------------------------------------------------------
+  const adminEmails = Array.isArray(opts.adminEmails) ? opts.adminEmails : [];
+  out.adminRecipients = adminEmails;
+
+  if (!adminEmails.length) {
+    out.errors.push('No admin email addresses configured.');
+  } else {
+    try {
+      const mail = adminOrderTemplate(ctx);
+      await transporter.sendMail({
+        from,
+        to: adminEmails,
+        replyTo: customerEmail || undefined,
+        subject: mail.subject,
+        text: mail.text,
+        html: mail.html,
+      });
+      out.adminSent = true;
+    } catch (err) {
+      console.error('ORDER ADMIN EMAIL ERROR:', err?.message || err);
+      out.errors.push('Admin email failed.');
+    }
+  }
+
+  return out;
+}
+
 module.exports = {
   sendForgotPasswordEmail,
   sendRegistrationOtpEmail,
+  getAdminEmails,
+  sendOrderEmails,
 };
+
