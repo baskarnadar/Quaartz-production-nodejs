@@ -207,6 +207,15 @@ async function buildOrderEmailContext(db, args) {
   }
 
   // --- city ---------------------------------------------------------------
+  // Pickup city: strictly the order's PickUpCityID (falling back to the
+  // store's own city). Shown in the Fulfilment block.
+  const storeCity = await resolveCityName(db, {
+    user: {},
+    PickUpCityIDVal,
+    store,
+  });
+
+  // Customer city: the user's own city, falling back to the pickup city.
   const cityName = await resolveCityName(db, {
     user,
     PickUpCityIDVal,
@@ -295,6 +304,8 @@ async function buildOrderEmailContext(db, args) {
     DeliveryType: DeliveryTypeIDVal || "",
     StoreName: storeName,
     StoreAddress: storeAddress,
+    StoreCity: storeCity,
+    PickUpCityID: PickUpCityIDVal || "",
 
     Items,
     OrderTotal: orderTotal,

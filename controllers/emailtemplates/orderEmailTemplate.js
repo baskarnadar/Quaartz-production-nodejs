@@ -293,6 +293,7 @@ function customerOrderTemplate(ctx = {}) {
     DeliveryType,
     StoreName,
     StoreAddress,
+    StoreCity,
     Items = [],
     OrderTotal = 0,
     PlacedAt,
@@ -335,6 +336,7 @@ function customerOrderTemplate(ctx = {}) {
               ${detailRows([
                 ["Method", DeliveryType],
                 ["Store", StoreName],
+                ["City", StoreCity],
                 ["Address", StoreAddress],
                 ["Placed on", PlacedAt],
               ])}
@@ -368,6 +370,7 @@ function customerOrderTemplate(ctx = {}) {
     `Total: ${money(OrderTotal)}`,
     DeliveryType ? `Method: ${DeliveryType}` : "",
     StoreName ? `Store: ${StoreName}` : "",
+    StoreCity ? `City: ${StoreCity}` : "",
     ``,
     `Questions? ${SUPPORT_EMAIL}`,
     `${APP_NAME} - ${APP_URL}`,
@@ -402,6 +405,7 @@ function adminOrderTemplate(ctx = {}) {
     DeliveryType,
     StoreName,
     StoreAddress,
+    StoreCity,
     Items = [],
     OrderTotal = 0,
     PlacedAt,
@@ -469,6 +473,7 @@ function adminOrderTemplate(ctx = {}) {
               ${detailRows([
                 ["Method", DeliveryType],
                 ["Store", StoreName],
+                ["City", StoreCity],
                 ["Address", StoreAddress],
                 ["Placed on", PlacedAt],
               ])}
@@ -497,6 +502,7 @@ function adminOrderTemplate(ctx = {}) {
     `Total: ${money(OrderTotal)}`,
     DeliveryType ? `Method: ${DeliveryType}` : "",
     StoreName ? `Store: ${StoreName}` : "",
+    StoreCity ? `City: ${StoreCity}` : "",
     PlacedAt ? `Placed on: ${PlacedAt}` : "",
   ]
     .filter((l) => l !== "")
