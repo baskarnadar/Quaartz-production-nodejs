@@ -313,3 +313,102 @@ exports.updateMainColor = async (req, res, next) => {
     next(error);
   }
 };
+
+ // ------------------------------------------------------------
+// POST /lookupdata/productcolor/main/updateSubColors
+//
+// Assigns / un-assigns special colors (tblPrdSpecialColor) to a main color.
+//   Checked   -> tblPrdSpecialColor.MainColorCodeID = MainColorCodeID
+//   Unchecked -> tblPrdSpecialColor.MainColorCodeID = ""
+//
+// Body:
+// {
+//   "MainColorCodeID": "2fda26278ad347ceb362121df",
+//   "checkedSplColorCodeIDPrKeys":   ["b76b87561b02458487a58157", ...],
+//   "uncheckedSplColorCodeIDPrKeys": ["dbad0f4145e3478b837379b2", ...],
+//   "ModifyBy": "USER"
+// }
+// ------------------------------------------------------------
+exports.udpatesubcolor = async (req, res, next) => {
+  try {
+    const db = await connectToMongoDB();
+
+    const {
+      MainColorCodeID,
+      checkedSplColorCodeIDPrKeys,
+      uncheckedSplColorCodeIDPrKeys,
+      ModifyBy,
+    } = req.body || {};
+
+    const mainColorID = String(MainColorCodeID || "").trim();
+
+    // Clean + de-duplicate an array of keys
+    const cleanKeys = (value) =>
+      [...new Set((Array.isArray(value) ? value : []).map((key) => String(key || "").trim()).filter(Boolean))];
+
+    const checkedKeys = cleanKeys(checkedSplColorCodeIDPrKeys);
+    // A key can't be both checked and unchecked; checked wins
+    const uncheckedKeys = cleanKeys(uncheckedSplColorCodeIDPrKeys).filter((key) => !checkedKeys.includes(key));
+
+    // ---------- Validation ----------
+    if (!mainColorID) {
+      return sendResponse(res, "MainColorCodeID is required", "validation_error", null);
+    }
+
+    if (checkedKeys.length === 0 && uncheckedKeys.length === 0) {
+      return sendResponse(res, "No changes to save", "validation_error", null);
+    }
+
+    const mainColor = await db
+      .collection("tblMainColorCode")
+      .findOne({ MainColorCodeID: mainColorID }, { projection: { _id: 1 } });
+
+    if (!mainColor) {
+      return sendResponse(res, "Main color not found. Make sure MainColorCodeID is correct.", "not_found", null);
+    }
+
+    // ---------- Update ----------
+    const collection = db.collection("tblPrdSpecialColor");
+    const auditFields = {
+      modifiedAt: new Date(),
+      updatedBy: ModifyBy || "USER",
+    };
+
+    let assignedCount = 0;
+    let unassignedCount = 0;
+
+    // ✅ Checked: link all selected colors to this main color
+    if (checkedKeys.length > 0) {
+      const result = await collection.updateMany(
+        { SplColorCodeIDPrKey: { $in: checkedKeys } },
+        { $set: { MainColorCodeID: mainColorID, ...auditFields } }
+      );
+      assignedCount = result.modifiedCount;
+    }
+
+    // ✅ Unchecked: clear MainColorCodeID
+    // Only clears colors that still belong to THIS main color,
+    // so a color assigned to another main color in the meantime is not touched.
+    if (uncheckedKeys.length > 0) {
+      const result = await collection.updateMany(
+        { SplColorCodeIDPrKey: { $in: uncheckedKeys }, MainColorCodeID: mainColorID },
+        { $set: { MainColorCodeID: "", ...auditFields } }
+      );
+      unassignedCount = result.modifiedCount;
+    }
+
+    return sendResponse(
+      res,
+      `Sub colors updated successfully (${assignedCount} assigned, ${unassignedCount} removed)`,
+      null,
+      {
+        MainColorCodeID: mainColorID,
+        assignedCount,
+        unassignedCount,
+      }
+    );
+  } catch (error) {
+    console.error("updateSubColors error:", error);
+    next(error);
+  }
+};

@@ -9,5 +9,6 @@ router.post("/addMainColor", protectAPI,Maincolor.addMainColor);
 router.post("/delMainColor", protectAPI,Maincolor.delMainColor);
 router.post("/updateMainColor", protectAPI,Maincolor.updateMainColor);
 router.post("/changeorder",protectAPI, Maincolor.changeorder);
-module.exports = router;
+router.post("/udpatesubcolor",protectAPI, Maincolor.udpatesubcolor);
+module.exports = router; 
 
