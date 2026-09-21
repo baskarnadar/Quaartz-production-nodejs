@@ -1,4 +1,4 @@
- // mainprdcolor.controller.js
+// mainprdcolor.controller.js
 const { connectToMongoDB } = require("../../../../database/mongodb");
 const { generateUniqueId } = require("../../../../controllers/operation/operation");
 
@@ -98,7 +98,11 @@ exports.editMainColor = async (req, res, next) => {
 };
 
 // ------------------------------------------------------------
-// ADD (OK - already same field name)
+// ADD
+// ✅ FIXED: only MainColorCode + sigmacolorcode are required.
+//    MainColorType defaults to "PRODUCT".
+//    EnMainColorName / ArMainColorName are optional (saved as "").
+//    OrderID is set automatically to (highest OrderID + 1).
 // ------------------------------------------------------------
 exports.addMainColor = async (req, res, next) => {
   try {
@@ -115,24 +119,47 @@ exports.addMainColor = async (req, res, next) => {
       ModifyBy,
     } = req.body || {};
 
-    if (!MainColorCode || !MainColorType || !EnMainColorName || !ArMainColorName) {
+    const colorCode = String(MainColorCode || "").trim().toUpperCase();
+    const sigmaCode = String(sigmacolorcode || "").trim();
+
+    if (!colorCode || !sigmaCode) {
       return sendResponse(
         res,
-        "Please provide: MainColorCode, MainColorType, EnMainColorName, ArMainColorName",
+        "Please provide: MainColorCode, sigmacolorcode",
         "validation_error",
         null
       );
     }
 
+    if (!/^#[0-9A-F]{6}$/.test(colorCode)) {
+      return sendResponse(
+        res,
+        "MainColorCode must be a valid hex value, e.g. #F2E3B0",
+        "validation_error",
+        null
+      );
+    }
+
+    const collection = db.collection("tblMainColorCode");
+
+    // Next OrderID = highest existing OrderID + 1
+    const lastOrdered = await collection
+      .find({ OrderID: { $type: "number" } })
+      .sort({ OrderID: -1 })
+      .limit(1)
+      .toArray();
+    const nextOrderID = lastOrdered.length > 0 ? Number(lastOrdered[0].OrderID) + 1 : 1;
+
     const now = new Date();
 
     const MainColorItem = {
       MainColorCodeID: generateUniqueId(),
-      MainColorCode: String(MainColorCode).trim(),
-      MainColorType: String(MainColorType).trim(),
-      EnMainColorName: String(EnMainColorName).trim(),
-      ArMainColorName: String(ArMainColorName).trim(),
-      sigmacolorcode: String(sigmacolorcode || "").trim(),
+      MainColorCode: colorCode,
+      MainColorType: String(MainColorType || "PRODUCT").trim() || "PRODUCT",
+      EnMainColorName: String(EnMainColorName || "").trim(),
+      ArMainColorName: String(ArMainColorName || "").trim(),
+      sigmacolorcode: sigmaCode,
+      OrderID: nextOrderID,
       createdAt: now,
       modifiedAt: now,
       createdBy: CreatedBy || "USER",
@@ -140,7 +167,7 @@ exports.addMainColor = async (req, res, next) => {
       IsDataStatus: Number(IsDataStatus ?? 1),
     };
 
-    const result = await db.collection("tblMainColorCode").insertOne(MainColorItem);
+    const result = await collection.insertOne(MainColorItem);
 
     return sendResponse(res, "Main Color inserted successfully.", null, {
       insertedId: result?.insertedId || null,
@@ -183,10 +210,10 @@ exports.delMainColor = async (req, res, next) => {
 };
 
 // ------------------------------------------------------------
-// UPDATE (UPDATED: same field names)
+// UPDATE (using updateOne)
 // Frontend will send MainColorCodeID + MainColor... fields
+// Only fields that are sent are updated; names may be empty.
 // ------------------------------------------------------------
- // UPDATE (using updateOne)
 exports.updateMainColor = async (req, res, next) => {
   try {
     const db = await connectToMongoDB();
@@ -203,7 +230,6 @@ exports.updateMainColor = async (req, res, next) => {
     } = req.body || {};
 
     const idStr = String(MainColorCodeID || "").trim();
-    console.log("Incoming MainColorCodeID:", idStr);
 
     if (!idStr) {
       return sendResponse(res, "MainColorCodeID is required", "validation_error", null);
@@ -216,13 +242,12 @@ exports.updateMainColor = async (req, res, next) => {
     };
 
     if (MainColorCode !== undefined) setDoc.MainColorCode = String(MainColorCode).trim();
-    if (MainColorType !== undefined) setDoc.MainColorType = String(MainColorType).trim();
+    if (MainColorType !== undefined) setDoc.MainColorType = String(MainColorType).trim() || "PRODUCT";
     if (EnMainColorName !== undefined) setDoc.EnMainColorName = String(EnMainColorName).trim();
     if (ArMainColorName !== undefined) setDoc.ArMainColorName = String(ArMainColorName).trim();
     if (sigmacolorcode !== undefined) setDoc.sigmacolorcode = String(sigmacolorcode).trim();
     if (IsDataStatus !== undefined) setDoc.IsDataStatus = Number(IsDataStatus);
 
-    // ✅ updateOne
     const updateResult = await db.collection("tblMainColorCode").updateOne(
       { MainColorCodeID: idStr },
       { $set: setDoc }
@@ -237,35 +262,28 @@ exports.updateMainColor = async (req, res, next) => {
       );
     }
 
-    // ✅ fetch updated record
     const updatedRecord = await db.collection("tblMainColorCode").findOne({
       MainColorCodeID: idStr,
     });
 
-    return sendResponse(
-      res,
-      "Main color updated successfully",
-      null,
-      updatedRecord
-    );
+    return sendResponse(res, "Main color updated successfully", null, updatedRecord);
   } catch (error) {
-    console.error("updatePrdColor error:", error);
+    console.error("updateMainColor error:", error);
     next(error);
   }
 };
- exports.changeorder = async (req, res, next) => {
+
+// ------------------------------------------------------------
+// CHANGE ORDER
+// ------------------------------------------------------------
+exports.changeorder = async (req, res, next) => {
   try {
     const db = await connectToMongoDB();
 
     const items = req.body;
 
     if (!Array.isArray(items) || items.length === 0) {
-      return sendResponse(
-        res,
-        "Request body must be an array.",
-        "validation_error",
-        null
-      );
+      return sendResponse(res, "Request body must be an array.", "validation_error", null);
     }
 
     const bulkOps = [];
@@ -292,29 +310,19 @@ exports.updateMainColor = async (req, res, next) => {
     }
 
     if (!bulkOps.length) {
-      return sendResponse(
-        res,
-        "No valid records found.",
-        "validation_error",
-        null
-      );
+      return sendResponse(res, "No valid records found.", "validation_error", null);
     }
 
     await db.collection("tblMainColorCode").bulkWrite(bulkOps);
 
-    return sendResponse(
-      res,
-      "Order updated successfully.",
-      null,
-      null
-    );
+    return sendResponse(res, "Order updated successfully.", null, null);
   } catch (error) {
     console.error("Change Order Error:", error);
     next(error);
   }
 };
 
- // ------------------------------------------------------------
+// ------------------------------------------------------------
 // POST /lookupdata/productcolor/main/updateSubColors
 //
 // Assigns / un-assigns special colors (tblPrdSpecialColor) to a main color.
@@ -350,7 +358,6 @@ exports.udpatesubcolor = async (req, res, next) => {
     // A key can't be both checked and unchecked; checked wins
     const uncheckedKeys = cleanKeys(uncheckedSplColorCodeIDPrKeys).filter((key) => !checkedKeys.includes(key));
 
-    // ---------- Validation ----------
     if (!mainColorID) {
       return sendResponse(res, "MainColorCodeID is required", "validation_error", null);
     }
@@ -367,7 +374,6 @@ exports.udpatesubcolor = async (req, res, next) => {
       return sendResponse(res, "Main color not found. Make sure MainColorCodeID is correct.", "not_found", null);
     }
 
-    // ---------- Update ----------
     const collection = db.collection("tblPrdSpecialColor");
     const auditFields = {
       modifiedAt: new Date(),
@@ -377,7 +383,7 @@ exports.udpatesubcolor = async (req, res, next) => {
     let assignedCount = 0;
     let unassignedCount = 0;
 
-    // ✅ Checked: link all selected colors to this main color
+    // Checked: link all selected colors to this main color
     if (checkedKeys.length > 0) {
       const result = await collection.updateMany(
         { SplColorCodeIDPrKey: { $in: checkedKeys } },
@@ -386,9 +392,7 @@ exports.udpatesubcolor = async (req, res, next) => {
       assignedCount = result.modifiedCount;
     }
 
-    // ✅ Unchecked: clear MainColorCodeID
-    // Only clears colors that still belong to THIS main color,
-    // so a color assigned to another main color in the meantime is not touched.
+    // Unchecked: clear MainColorCodeID (only if it still belongs to THIS main color)
     if (uncheckedKeys.length > 0) {
       const result = await collection.updateMany(
         { SplColorCodeIDPrKey: { $in: uncheckedKeys }, MainColorCodeID: mainColorID },
