@@ -323,7 +323,7 @@ exports.changeorder = async (req, res, next) => {
 };
 
 // ------------------------------------------------------------
-// POST /lookupdata/productcolor/main/updateSubColors
+// POST /lookupdata/productcolor/main/udpatesubcolor
 //
 // Assigns / un-assigns special colors (tblPrdSpecialColor) to a main color.
 //   Checked   -> tblPrdSpecialColor.MainColorCodeID = MainColorCodeID
@@ -412,7 +412,7 @@ exports.udpatesubcolor = async (req, res, next) => {
       }
     );
   } catch (error) {
-    console.error("updateSubColors error:", error);
+    console.error("udpatesubcolor error:", error);
     next(error);
   }
 };
