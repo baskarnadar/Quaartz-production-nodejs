@@ -1,4 +1,4 @@
-const { connectToMongoDB } = require("../../database/mongodb");
+ const { connectToMongoDB } = require("../../database/mongodb");
 const { generateUniqueId } = require("../../controllers/operation/operation");
 
 // Helper function to send responses
@@ -405,6 +405,100 @@ console.log(result.deletedCount);
     }
 
     sendResponse(res, "Store deleted successfully.", null, result);
+  } catch (error) {
+    console.log(error);
+    next(error);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Edit Store page
+// The admin list links with the Mongo _id, older/app records use StoreID (UUID).
+// This filter accepts either one.
+// ---------------------------------------------------------------------------
+const { ObjectId } = require("mongodb");
+
+function storeFilter(StoreID) {
+  const id = String(StoreID || "").trim();
+  if (ObjectId.isValid(id) && String(new ObjectId(id)) === id) {
+    return { $or: [{ _id: new ObjectId(id) }, { StoreID: id }] };
+  }
+  return { StoreID: id };
+}
+
+// POST /store/getStorebyID   body: { StoreID }
+exports.getStorebyID = async (req, res, next) => {
+  try {
+    const db = await connectToMongoDB();
+    const { StoreID } = req.body || {};
+    if (!StoreID) {
+      return sendResponse(res, "StoreID is required", "Missing StoreID", null);
+    }
+
+    const store = await db.collection("tblstoreinfo").findOne(storeFilter(StoreID));
+    if (!store) {
+      return res.status(404).json({ statusCode: 404, message: "Store not found", data: null, error: "Not found" });
+    }
+
+    // add city names like getStoreList does
+    if (store.CityID) {
+      const city = await db.collection("tblcity").findOne({ CityID: store.CityID });
+      if (city) {
+        store.EnCityName = city.EnCityName;
+        store.ArCityName = city.ArCityName;
+      }
+    }
+
+    sendResponse(res, "Data fetched successfully.", null, store);
+  } catch (error) {
+    console.log(error);
+    next(error);
+  }
+};
+
+// POST /store/updateStore   body: { StoreID, StoreCodeID, StoreName, SalesRepName, ... }
+exports.updateStore = async (req, res, next) => {
+  try {
+    const db = await connectToMongoDB();
+    const b = req.body || {};
+    const clean = (v) => (v === undefined || v === null ? "" : String(v).trim());
+
+    if (!b.StoreID) {
+      return sendResponse(res, "StoreID is required", "Missing StoreID", null);
+    }
+    if (!clean(b.StoreCodeID) || !clean(b.StoreName)) {
+      return sendResponse(res, "Store Code ID and Store Name are required", "Missing fields", null);
+    }
+
+    const $set = {
+      StoreCodeID: clean(b.StoreCodeID),
+      StoreName: clean(b.StoreName),
+      SalesRepName: clean(b.SalesRepName),
+      "Sales Rep name ": clean(b.SalesRepName), // the admin list reads this field
+      StoreArea: clean(b.StoreArea),
+      CityID: clean(b.CityID),
+      StoreAdress: clean(b.StoreAdress),
+      StoreGoogleMapLink: clean(b.StoreGoogleMapLink),
+      StoreLatitude: clean(b.StoreLatitude),
+      StoreLongitude: clean(b.StoreLongitude),
+      updatedBy: b.updatedBy || "USER",
+      modifyat: new Date(),
+    };
+
+    // keep CityID the same type as in tblcity (number or string)
+    if ($set.CityID !== "") {
+      const city =
+        (await db.collection("tblcity").findOne({ CityID: $set.CityID })) ||
+        (!isNaN($set.CityID) && (await db.collection("tblcity").findOne({ CityID: Number($set.CityID) })));
+      if (city) $set.CityID = city.CityID;
+    }
+
+    const result = await db.collection("tblstoreinfo").updateOne(storeFilter(b.StoreID), { $set });
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ statusCode: 404, message: "Store not found", data: null, error: "Not found" });
+    }
+
+    sendResponse(res, "Store updated successfully.", null, result);
   } catch (error) {
     console.log(error);
     next(error);

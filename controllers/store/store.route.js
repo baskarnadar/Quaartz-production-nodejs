@@ -1,4 +1,4 @@
-const store = require("./store.controller");
+ const store = require("./store.controller");
 const express = require("express");
 const router = express.Router();
 
@@ -9,5 +9,6 @@ router.post("/getCityAndStore", protectAPI,store.getCityAndStore);
 router.post("/getCityAndStoreSorting",store.getCityAndStoreSorting);
 router.post("/getStoreList", protectAPI,store.getStoreList);
 router.post("/delStorebyID", protectAPI,store.delStorebyID);
+router.post("/getStorebyID", protectAPI, store.getStorebyID);
+router.post("/updateStore", protectAPI, store.updateStore);
 module.exports = router;
-
