@@ -842,8 +842,7 @@ exports.getnearhexcolor = async (req, res, next) => {
         PrdColorCodeID: c.PrdColorCodeID || "",
         ProductID: c.ProductID || "",
         SplColorCodeIDPrKey: "",
-        SplColorCodeID: c.sigmacolorcode || "", // Sigma Color Code
-        sigmacolorcode: c.sigmacolorcode || "",
+        sigmacolorcode: c.sigmacolorcode || "", // Sigma Color Code
         ColorKeyCode: String(c.ColorKeyCode || "").trim(),
         ColorKeyCodeID: c.ColorKeyCodeID || "",
         HexValue: hex,
@@ -871,6 +870,7 @@ exports.getnearhexcolor = async (req, res, next) => {
         _id: 1,
         SplColorCodeIDPrKey: 1,
         SplColorCodeID: 1,
+        sigmacolorcode: 1,
         ColorKeyCode: 1,
         ColorKeyCodeID: 1,
         HexValue: 1,
@@ -891,8 +891,8 @@ exports.getnearhexcolor = async (req, res, next) => {
         PrdColorCodeID: "",
         ProductID: "",
         SplColorCodeIDPrKey: c.SplColorCodeIDPrKey || "",
-        SplColorCodeID: c.SplColorCodeID || "", // Sigma Color Code
-        sigmacolorcode: c.SplColorCodeID || "",
+        // Sigma Color Code: tblPrdSpecialColor.SplColorCodeID -> sigmacolorcode
+        sigmacolorcode: c.SplColorCodeID || c.sigmacolorcode || "",
         ColorKeyCode: String(c.ColorKeyCode || "").trim(),
         ColorKeyCodeID: c.ColorKeyCodeID || "",
         HexValue: hex,
