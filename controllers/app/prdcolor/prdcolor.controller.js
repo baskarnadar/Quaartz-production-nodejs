@@ -511,6 +511,97 @@ function sendResponse(res, message, error, results) {
   }
 };
 
- 
+ exports.getnearhexcolor = async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const rawHex = body.HexValue ?? body.HexColor ?? body.PrdColorCode ?? "";
+
+    if (!String(rawHex).trim()) {
+      return sendResponse(res, "HexValue is required. Example: #E6E6E0", "validation_error", []);
+    }
+
+    const requestedHex = normalizeHexColor(rawHex);
+    if (!requestedHex) {
+      return sendResponse(res, "Invalid HexValue. Use HEX format such as #E6E6E0 or #EEE.", "validation_error", []);
+    }
+
+    // Maximum 15 colors (Limit can ask for fewer, never more)
+    const MAX_LIMIT = 15;
+    const limitNum = parseInt(body.Limit ?? MAX_LIMIT, 10);
+    const Limit = Math.min(Math.max(Number.isNaN(limitNum) ? MAX_LIMIT : limitNum, 1), MAX_LIMIT);
+
+    const ColorKeyCode = String(body.ColorKeyCode || "").trim();
+
+    const db = await connectToMongoDB();
+    const collection = db.collection("tblPrdSpecialColor");
+
+    // Optional category filter (ignores case and spaces)
+    const query = { HexValue: { $type: "string", $ne: "" } };
+    if (ColorKeyCode) {
+      const escaped = ColorKeyCode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      query.ColorKeyCode = { $regex: `^\\s*${escaped}\\s*$`, $options: "i" };
+    }
+
+    const colors = await collection
+      .find(query)
+      .project({
+        _id: 1,
+        SplColorCodeIDPrKey: 1,
+        SplColorCodeID: 1,
+        ColorKeyCode: 1,
+        ColorKeyCodeID: 1,
+        HexValue: 1,
+        EnColorName: 1,
+        ArColorName: 1,
+        MainColorCodeID: 1,
+      })
+      .toArray();
+
+    const targetLab = hexToLab(requestedHex);
+
+    const ranked = [];
+    for (const c of colors) {
+      const hex = normalizeHexColor(c.HexValue);
+      if (!hex) continue; // skip bad HEX values in the table
+
+      const distance = deltaE2000(targetLab, hexToLab(hex));
+
+      ranked.push({
+        _id: c._id,
+        SplColorCodeIDPrKey: c.SplColorCodeIDPrKey || "",
+        SplColorCodeID: c.SplColorCodeID || "", // Sigma Color Code
+        ColorKeyCode: String(c.ColorKeyCode || "").trim(),
+        ColorKeyCodeID: c.ColorKeyCodeID || "",
+        HexValue: hex,
+        EnColorName: c.EnColorName || "",
+        ArColorName: c.ArColorName || "",
+        MainColorCodeID: c.MainColorCodeID || "",
+        Distance: Number(distance.toFixed(2)),
+        // 0 distance = 100%, 50+ distance = 0%
+        SimilarityPercent: Number(Math.max(0, 100 - distance * 2).toFixed(2)),
+        IsExactMatch: hex === requestedHex,
+      });
+    }
+
+    ranked.sort((x, y) => x.Distance - y.Distance);
+    const nearest = ranked.slice(0, Limit);
+
+    return sendResponse(
+      res,
+      `Nearest ${nearest.length} color(s) for ${requestedHex}.`,
+      null,
+      {
+        RequestedHex: requestedHex,
+        ColorKeyCode: ColorKeyCode,
+        Limit: Limit,
+        TotalSearched: ranked.length,
+        Data: nearest,
+      }
+    );
+  } catch (error) {
+    console.log("[getnearhexcolor] Error:", error);
+    next(error);
+  }
+};
 
  
