@@ -641,3 +641,212 @@ exports.getcolorkeycodelistbyid = async (req, res, next) => {
     sendResponse(res, "No Color key code found.", error, []);
   }
 };
+// =========================================================
+// getnearhexcolor
+// POST /api/prdcolor/getnearhexcolor
+// Body:
+//   HexValue     : "#E6E6E0"  (required; also accepts "E6E6E0", "#EEE")
+//   Limit        : 15         (optional, 1-15, default 15, max 15)
+//   ColorKeyCode : "SCS"      (optional, only search this category)
+//
+// Finds the nearest colors in tblPrdSpecialColor.
+// Distance = CIEDE2000 (how different two colors look to the human eye):
+//   0       -> exact same color
+//   < 1     -> difference not visible
+//   1 - 2   -> visible only on close look
+//   2 - 10  -> visible at a glance
+//   > 10    -> clearly different color
+// =========================================================
+
+// HEX "#RRGGBB" -> CIE Lab (D65)
+function hexToLab(hex) {
+  const n = normalizeHexColor(hex);
+  if (!n) return null;
+
+  const toLinear = (c) => {
+    const v = c / 255;
+    return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+
+  const r = toLinear(parseInt(n.substring(1, 3), 16));
+  const g = toLinear(parseInt(n.substring(3, 5), 16));
+  const b = toLinear(parseInt(n.substring(5, 7), 16));
+
+  // sRGB -> XYZ (D65), normalised by the white point
+  const x = (r * 0.4124564 + g * 0.3575761 + b * 0.1804375) / 0.95047;
+  const y = (r * 0.2126729 + g * 0.7151522 + b * 0.0721750) / 1.0;
+  const z = (r * 0.0193339 + g * 0.1191920 + b * 0.9503041) / 1.08883;
+
+  const f = (t) => (t > 216 / 24389 ? Math.cbrt(t) : (24389 / 27 * t + 16) / 116);
+  const fx = f(x);
+  const fy = f(y);
+  const fz = f(z);
+
+  return { L: 116 * fy - 16, a: 500 * (fx - fy), b: 200 * (fy - fz) };
+}
+
+// CIEDE2000 colour difference between two Lab colours
+function deltaE2000(lab1, lab2) {
+  const rad = Math.PI / 180;
+  const deg = 180 / Math.PI;
+
+  const { L: L1, a: a1, b: b1 } = lab1;
+  const { L: L2, a: a2, b: b2 } = lab2;
+
+  const C1 = Math.sqrt(a1 * a1 + b1 * b1);
+  const C2 = Math.sqrt(a2 * a2 + b2 * b2);
+  const Cbar = (C1 + C2) / 2;
+  const Cbar7 = Math.pow(Cbar, 7);
+  const G = 0.5 * (1 - Math.sqrt(Cbar7 / (Cbar7 + Math.pow(25, 7))));
+
+  const a1p = (1 + G) * a1;
+  const a2p = (1 + G) * a2;
+  const C1p = Math.sqrt(a1p * a1p + b1 * b1);
+  const C2p = Math.sqrt(a2p * a2p + b2 * b2);
+
+  const hp = (bb, ap) => {
+    if (bb === 0 && ap === 0) return 0;
+    const h = Math.atan2(bb, ap) * deg;
+    return h >= 0 ? h : h + 360;
+  };
+  const h1p = hp(b1, a1p);
+  const h2p = hp(b2, a2p);
+
+  const dLp = L2 - L1;
+  const dCp = C2p - C1p;
+
+  let dhp = 0;
+  if (C1p * C2p !== 0) {
+    dhp = h2p - h1p;
+    if (dhp > 180) dhp -= 360;
+    else if (dhp < -180) dhp += 360;
+  }
+  const dHp = 2 * Math.sqrt(C1p * C2p) * Math.sin((dhp / 2) * rad);
+
+  const Lbp = (L1 + L2) / 2;
+  const Cbp = (C1p + C2p) / 2;
+
+  let hbp = h1p + h2p;
+  if (C1p * C2p !== 0) {
+    if (Math.abs(h1p - h2p) > 180) {
+      hbp = h1p + h2p < 360 ? (h1p + h2p + 360) / 2 : (h1p + h2p - 360) / 2;
+    } else {
+      hbp = (h1p + h2p) / 2;
+    }
+  }
+
+  const T =
+    1 -
+    0.17 * Math.cos((hbp - 30) * rad) +
+    0.24 * Math.cos(2 * hbp * rad) +
+    0.32 * Math.cos((3 * hbp + 6) * rad) -
+    0.2 * Math.cos((4 * hbp - 63) * rad);
+
+  const dTheta = 30 * Math.exp(-Math.pow((hbp - 275) / 25, 2));
+  const Cbp7 = Math.pow(Cbp, 7);
+  const Rc = 2 * Math.sqrt(Cbp7 / (Cbp7 + Math.pow(25, 7)));
+  const Sl = 1 + (0.015 * Math.pow(Lbp - 50, 2)) / Math.sqrt(20 + Math.pow(Lbp - 50, 2));
+  const Sc = 1 + 0.045 * Cbp;
+  const Sh = 1 + 0.015 * Cbp * T;
+  const Rt = -Math.sin(2 * dTheta * rad) * Rc;
+
+  return Math.sqrt(
+    Math.pow(dLp / Sl, 2) +
+      Math.pow(dCp / Sc, 2) +
+      Math.pow(dHp / Sh, 2) +
+      Rt * (dCp / Sc) * (dHp / Sh)
+  );
+}
+
+exports.getnearhexcolor = async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const rawHex = body.HexValue ?? body.HexColor ?? body.PrdColorCode ?? "";
+
+    if (!String(rawHex).trim()) {
+      return sendResponse(res, "HexValue is required. Example: #E6E6E0", "validation_error", []);
+    }
+
+    const requestedHex = normalizeHexColor(rawHex);
+    if (!requestedHex) {
+      return sendResponse(res, "Invalid HexValue. Use HEX format such as #E6E6E0 or #EEE.", "validation_error", []);
+    }
+
+    // Maximum 15 colors (Limit can ask for fewer, never more)
+    const MAX_LIMIT = 15;
+    const limitNum = parseInt(body.Limit ?? MAX_LIMIT, 10);
+    const Limit = Math.min(Math.max(Number.isNaN(limitNum) ? MAX_LIMIT : limitNum, 1), MAX_LIMIT);
+
+    const ColorKeyCode = String(body.ColorKeyCode || "").trim();
+
+    const db = await connectToMongoDB();
+    const collection = db.collection("tblPrdSpecialColor");
+
+    // Optional category filter (ignores case and spaces)
+    const query = { HexValue: { $type: "string", $ne: "" } };
+    if (ColorKeyCode) {
+      const escaped = ColorKeyCode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      query.ColorKeyCode = { $regex: `^\\s*${escaped}\\s*$`, $options: "i" };
+    }
+
+    const colors = await collection
+      .find(query)
+      .project({
+        _id: 1,
+        SplColorCodeIDPrKey: 1,
+        SplColorCodeID: 1,
+        ColorKeyCode: 1,
+        ColorKeyCodeID: 1,
+        HexValue: 1,
+        EnColorName: 1,
+        ArColorName: 1,
+        MainColorCodeID: 1,
+      })
+      .toArray();
+
+    const targetLab = hexToLab(requestedHex);
+
+    const ranked = [];
+    for (const c of colors) {
+      const hex = normalizeHexColor(c.HexValue);
+      if (!hex) continue; // skip bad HEX values in the table
+
+      const distance = deltaE2000(targetLab, hexToLab(hex));
+
+      ranked.push({
+        _id: c._id,
+        SplColorCodeIDPrKey: c.SplColorCodeIDPrKey || "",
+        SplColorCodeID: c.SplColorCodeID || "", // Sigma Color Code
+        ColorKeyCode: String(c.ColorKeyCode || "").trim(),
+        ColorKeyCodeID: c.ColorKeyCodeID || "",
+        HexValue: hex,
+        EnColorName: c.EnColorName || "",
+        ArColorName: c.ArColorName || "",
+        MainColorCodeID: c.MainColorCodeID || "",
+        Distance: Number(distance.toFixed(2)),
+        // 0 distance = 100%, 50+ distance = 0%
+        SimilarityPercent: Number(Math.max(0, 100 - distance * 2).toFixed(2)),
+        IsExactMatch: hex === requestedHex,
+      });
+    }
+
+    ranked.sort((x, y) => x.Distance - y.Distance);
+    const nearest = ranked.slice(0, Limit);
+
+    return sendResponse(
+      res,
+      `Nearest ${nearest.length} color(s) for ${requestedHex}.`,
+      null,
+      {
+        RequestedHex: requestedHex,
+        ColorKeyCode: ColorKeyCode,
+        Limit: Limit,
+        TotalSearched: ranked.length,
+        Data: nearest,
+      }
+    );
+  } catch (error) {
+    console.log("[getnearhexcolor] Error:", error);
+    next(error);
+  }
+};
