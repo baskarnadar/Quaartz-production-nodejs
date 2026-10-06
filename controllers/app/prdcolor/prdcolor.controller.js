@@ -511,6 +511,15 @@ function sendResponse(res, message, error, results) {
   }
 };
 
+function normalizeHexColor(value) {
+  let hex = String(value || "").trim().replace(/\s+/g, "").toUpperCase();
+  if (!hex) return "";
+  if (!hex.startsWith("#")) hex = `#${hex}`;
+  if (/^#[0-9A-F]{3}$/.test(hex)) {
+    hex = "#" + hex.slice(1).split("").map((c) => c + c).join("");
+  }
+  return /^#[0-9A-F]{6}$/.test(hex) ? hex : null;
+}
  exports.getnearhexcolor = async (req, res, next) => {
   try {
     const body = req.body || {};
