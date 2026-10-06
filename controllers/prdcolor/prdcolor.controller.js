@@ -252,6 +252,12 @@ exports.editPrdColor = async (req, res, next) => {
       updatedData.ColorKeyCodeID = resolved.ColorKeyCodeID;
     }
 
+    // Manual color (no Category) -> Sigma Color Code is required
+    if (hasColorKeyCode && !ColorKeyCode && !sigmacolorcode) {
+      return res.status(400).json({ statusCode: 400, error: 'validation_error',
+        message: 'Sigma Color Code is required when no Category is selected.' });
+    }
+
     if (hasColorKeyCode && ColorKeyCode) {
       const duplicate = await collection.findOne({
         ProductID: ProductID,
@@ -318,9 +324,18 @@ exports.editPrdColor = async (req, res, next) => {
       .map((x) => String(x || '').trim())
       .filter((x) => x !== '');
 
-    // Since Sigma Color Code is optional, at least ONE of these must be given
-    if (!sigmacolorcode && !PrdColorCode && cleanColorKeyCodeArray.length === 0) {
-      return sendResponse(res, "Enter a Sigma Color Code, a Color Code, or select a Category.", "validation_error", []);
+    // Rules:
+    //  - Category selected       -> Sigma Color Code / Color Code not needed
+    //  - Manual color (no Category) -> Sigma Color Code is required
+    if (cleanColorKeyCodeArray.length === 0 && !sigmacolorcode) {
+      return sendResponse(
+        res,
+        PrdColorCode
+          ? "Sigma Color Code is required for a manual Color Code."
+          : "Select a Category, or enter a Sigma Color Code for a manual color.",
+        "validation_error",
+        []
+      );
     }
 
     // Optional: client may send ColorKeyCodeID as a single value (only used
@@ -354,8 +369,9 @@ exports.editPrdColor = async (req, res, next) => {
         }
 
         const Productitem = {
-          EnPrdColorName: EnPrdColorName,
-          ArPrdColorName: ArPrdColorName,
+          // Category rows: name falls back to the category code
+          EnPrdColorName: EnPrdColorName || ColorKeyCode,
+          ArPrdColorName: ArPrdColorName || ColorKeyCode,
           modifiedAt: new Date(),
           createdAt: new Date(),
           PrdColorCode: PrdColorCode,
