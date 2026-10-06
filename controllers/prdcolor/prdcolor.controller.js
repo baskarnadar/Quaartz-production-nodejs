@@ -10,6 +10,58 @@ function sendResponse(res, message, error, results) {
   });
 }
 
+// =========================================================
+// Helper: normalize HEX to "#RRGGBB" (uppercase).
+// Accepts "#fff", "fff", "#ffffff", "ffffff".
+// Returns "" when empty, null when invalid.
+// =========================================================
+function normalizeHexColor(value) {
+  let hex = String(value || "").trim().replace(/\s+/g, "").toUpperCase();
+  if (!hex) return "";
+  if (!hex.startsWith("#")) hex = `#${hex}`;
+  if (/^#[0-9A-F]{3}$/.test(hex)) {
+    hex = "#" + hex.slice(1).split("").map((c) => c + c).join("");
+  }
+  return /^#[0-9A-F]{6}$/.test(hex) ? hex : null;
+}
+
+// =========================================================
+// Helper: look up a category in tblprdColorKeyCode.
+// Returns { ColorKeyCode, ColorKeyCodeID } using the values stored
+// in tblprdColorKeyCode. Matching is case-insensitive and trimmed.
+// If the category is not found, falls back to the ColorKeyCodeID
+// the client sent (if any), otherwise "".
+// =========================================================
+async function resolveColorKeyCode(db, ColorKeyCode, clientColorKeyCodeID) {
+  const key = String(ColorKeyCode || "").trim();
+  if (!key) return { ColorKeyCode: "", ColorKeyCodeID: "" };
+
+  const found = await db.collection("tblprdColorKeyCode").findOne(
+    {
+      $expr: {
+        $eq: [
+          { $toUpper: { $trim: { input: { $toString: "$ColorKeyCode" } } } },
+          key.toUpperCase(),
+        ],
+      },
+    },
+    { projection: { ColorKeyCode: 1, ColorKeyCodeID: 1 } }
+  );
+
+  if (found) {
+    return {
+      ColorKeyCode: String(found.ColorKeyCode || key).trim(),
+      ColorKeyCodeID: String(found.ColorKeyCodeID || "").trim(),
+    };
+  }
+
+  console.warn(`[prdcolor] ColorKeyCode "${key}" not found in tblprdColorKeyCode`);
+  return {
+    ColorKeyCode: key,
+    ColorKeyCodeID: String(clientColorKeyCodeID || "").trim(),
+  };
+}
+
 
 exports.getprdcolorbyidgroup = async (req, res, next) => {
   try {
@@ -151,34 +203,82 @@ exports.getprdcolorlist = async (req, res, next) => {
 };
 
 exports.editPrdColor = async (req, res, next) => {
-  const { PrdColorCodeID, ProductID, EnPrdColorName,ArPrdColorName,PrdColorCode, sigmacolorcode } = req.body;  // Assuming `updatedData` contains fields to update
+  const { PrdColorCodeID, ProductID, EnPrdColorName, ArPrdColorName } = req.body;
+
+  // Sigma Color Code is OPTIONAL now
+  const sigmacolorcode = String(req.body.sigmacolorcode || "").trim();
+
+  // Color Code (HEX) is optional, but if sent it must be valid
+  const PrdColorCode = normalizeHexColor(req.body.PrdColorCode);
+  if (PrdColorCode === null) {
+    return res.status(400).json({ statusCode: 400, error: 'validation_error',
+      message: 'Invalid Color Code. Use HEX format such as #AABBCC or #ABC.' });
+  }
 
   const updatedData = {
-    EnPrdColorName: EnPrdColorName,
-    ArPrdColorName: ArPrdColorName,
+    EnPrdColorName: String(EnPrdColorName || "").trim() || sigmacolorcode || PrdColorCode,
+    ArPrdColorName: String(ArPrdColorName || "").trim() || sigmacolorcode || PrdColorCode,
     modifiedAt: new Date(),
-    PrdColorCode:PrdColorCode,
+    PrdColorCode: PrdColorCode,
     sigmacolorcode: sigmacolorcode
   };
-  const db = await connectToMongoDB();
+
+  // Category (ColorKeyCode): one per color row. Only touched when the client sends it,
+  // so older clients that don't send it keep the current value.
+  const hasColorKeyCode = Object.prototype.hasOwnProperty.call(req.body, 'ColorKeyCode');
+  let rawKey = '';
+  if (hasColorKeyCode) {
+    const raw = req.body.ColorKeyCode;
+    const arr = (Array.isArray(raw) ? raw : [raw])
+      .map((x) => String(x || '').trim())
+      .filter((x) => x !== '');
+    if (arr.length > 1) {
+      return res.status(400).json({ statusCode: 400, error: 'validation_error',
+        message: 'A color can have only one Category. Use "Add New Color" to add the other categories.' });
+    }
+    rawKey = arr[0] || '';
+  }
+
   try {
-    // Connect to the database and run a query to update
-    // Example: Using native MongoDB driver or another approach
-    const result = await db.collection('tblProductColor').updateOne(
-      { PrdColorCodeID: PrdColorCodeID, ProductID: ProductID },  // Filter conditions
-      { $set: updatedData }  // The updated data to apply
+    const db = await connectToMongoDB();
+    const collection = db.collection('tblProductColor');
+
+    let ColorKeyCode = '';
+    if (hasColorKeyCode) {
+      // Save ColorKeyCode + ColorKeyCodeID from tblprdColorKeyCode
+      const resolved = await resolveColorKeyCode(db, rawKey, req.body.ColorKeyCodeID);
+      ColorKeyCode = resolved.ColorKeyCode;
+      updatedData.ColorKeyCode = resolved.ColorKeyCode;
+      updatedData.ColorKeyCodeID = resolved.ColorKeyCodeID;
+    }
+
+    if (hasColorKeyCode && ColorKeyCode) {
+      const duplicate = await collection.findOne({
+        ProductID: ProductID,
+        ColorKeyCode: ColorKeyCode,
+        IsDataStatus: 1,
+        PrdColorCodeID: { $ne: PrdColorCodeID }
+      });
+      if (duplicate) {
+        return res.status(409).json({ statusCode: 409, error: 'duplicate',
+          message: `Category "${ColorKeyCode}" is already added to this product (Sigma Color Code: ${duplicate.sigmacolorcode || '-'}).` });
+      }
+    }
+
+    const result = await collection.updateOne(
+      { PrdColorCodeID: PrdColorCodeID, ProductID: ProductID },
+      { $set: updatedData }
     );
-  
+
     if (result.matchedCount === 0) {
       return res.status(404).json({ message: 'Product color not found or update failed.' });
     }
-  
+
     return res.status(200).json({ message: 'Product color updated successfully.', data: updatedData });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error, please try again.' });
   }
-  
 };
 
  exports.addPrdColor = async (req, res, next) => {
@@ -189,10 +289,22 @@ exports.editPrdColor = async (req, res, next) => {
     const ProductID = req.body.ProductID;
 
     if (!ProductID) {
-      return sendResponse(res, "ProductID is required.", null, []);
+      return sendResponse(res, "ProductID is required.", "validation_error", []);
     }
 
-    const sigmacolorcode = req.body.sigmacolorcode;
+    // Sigma Color Code is OPTIONAL now
+    const sigmacolorcode = String(req.body.sigmacolorcode || "").trim();
+
+    // Color Code (HEX) is optional, but if sent it must be valid.
+    // Saved as "#RRGGBB" so the app color-match API (getprdcolormatchlist) can find it.
+    const PrdColorCode = normalizeHexColor(req.body.PrdColorCode);
+    if (PrdColorCode === null) {
+      return sendResponse(res, "Invalid Color Code. Use HEX format such as #AABBCC or #ABC.", "validation_error", []);
+    }
+
+    // Names fall back to Sigma Color Code, then HEX, when not sent
+    const EnPrdColorName = String(req.body.EnPrdColorName || "").trim() || sigmacolorcode || PrdColorCode;
+    const ArPrdColorName = String(req.body.ArPrdColorName || "").trim() || sigmacolorcode || PrdColorCode;
 
     const rawColorKeyCode = req.body.ColorKeyCode;
 
@@ -206,12 +318,24 @@ exports.editPrdColor = async (req, res, next) => {
       .map((x) => String(x || '').trim())
       .filter((x) => x !== '');
 
+    // Since Sigma Color Code is optional, at least ONE of these must be given
+    if (!sigmacolorcode && !PrdColorCode && cleanColorKeyCodeArray.length === 0) {
+      return sendResponse(res, "Enter a Sigma Color Code, a Color Code, or select a Category.", "validation_error", []);
+    }
+
+    // Optional: client may send ColorKeyCodeID as a single value (only used
+    // as a fallback when the category is not found in tblprdColorKeyCode)
+    const clientColorKeyCodeID = Array.isArray(req.body.ColorKeyCodeID) ? "" : req.body.ColorKeyCodeID;
+
     const insertedItems = [];
     const skippedItems = [];
 
     // If ColorKeyCode has values, insert one record per key
     if (cleanColorKeyCodeArray.length > 0) {
-      for (const ColorKeyCode of cleanColorKeyCodeArray) {
+      for (const rawKey of cleanColorKeyCodeArray) {
+        // Get ColorKeyCode + ColorKeyCodeID from tblprdColorKeyCode
+        const { ColorKeyCode, ColorKeyCodeID } = await resolveColorKeyCode(db, rawKey, clientColorKeyCodeID);
+
         const existingColor = await collection.findOne({
           ProductID: ProductID,
           ColorKeyCode: ColorKeyCode,
@@ -222,24 +346,27 @@ exports.editPrdColor = async (req, res, next) => {
           skippedItems.push({
             ProductID: ProductID,
             ColorKeyCode: ColorKeyCode,
-            message: "Already exists"
+            ColorKeyCodeID: ColorKeyCodeID,
+            sigmacolorcode: existingColor.sigmacolorcode || "",
+            message: `Category "${ColorKeyCode}" is already added to this product`
           });
           continue;
         }
 
         const Productitem = {
-          EnPrdColorName: req.body.EnPrdColorName,
-          ArPrdColorName: req.body.ArPrdColorName,
+          EnPrdColorName: EnPrdColorName,
+          ArPrdColorName: ArPrdColorName,
           modifiedAt: new Date(),
           createdAt: new Date(),
-          PrdColorCode: req.body.PrdColorCode,
+          PrdColorCode: PrdColorCode,
           sigmacolorcode: sigmacolorcode,
           ProductID: ProductID,
           PrdColorCodeID: generateUniqueId(),
           createdBy: "USER",
           updatedBy: "USER",
           IsDataStatus: 1,
-          ColorKeyCode: ColorKeyCode
+          ColorKeyCode: ColorKeyCode,
+          ColorKeyCodeID: ColorKeyCodeID
         };
 
         await collection.insertOne(Productitem);
@@ -249,8 +376,9 @@ exports.editPrdColor = async (req, res, next) => {
       // If ColorKeyCode empty, insert normal product color only
       const existingColor = await collection.findOne({
         ProductID: ProductID,
-        EnPrdColorName: req.body.EnPrdColorName,
-        ArPrdColorName: req.body.ArPrdColorName,
+        EnPrdColorName: EnPrdColorName,
+        ArPrdColorName: ArPrdColorName,
+        PrdColorCode: PrdColorCode,
         IsDataStatus: 1,
         $or: [
           { ColorKeyCode: { $exists: false } },
@@ -262,21 +390,24 @@ exports.editPrdColor = async (req, res, next) => {
       if (existingColor) {
         skippedItems.push({
           ProductID: ProductID,
-          message: "Already exists"
+          sigmacolorcode: existingColor.sigmacolorcode || "",
+          message: "This color already exists for this product"
         });
       } else {
         const Productitem = {
-          EnPrdColorName: req.body.EnPrdColorName,
-          ArPrdColorName: req.body.ArPrdColorName,
+          EnPrdColorName: EnPrdColorName,
+          ArPrdColorName: ArPrdColorName,
           modifiedAt: new Date(),
           createdAt: new Date(),
-          PrdColorCode: req.body.PrdColorCode,
+          PrdColorCode: PrdColorCode,
           sigmacolorcode: sigmacolorcode,
           ProductID: ProductID,
           PrdColorCodeID: generateUniqueId(),
           createdBy: "USER",
           updatedBy: "USER",
-          IsDataStatus: 1
+          IsDataStatus: 1,
+          ColorKeyCode: "",
+          ColorKeyCodeID: ""
         };
 
         await collection.insertOne(Productitem);
@@ -284,17 +415,28 @@ exports.editPrdColor = async (req, res, next) => {
       }
     }
 
-    return sendResponse(
-      res,
-      "Product Color processed successfully.",
-      null,
-      {
-        insertedCount: insertedItems.length,
-        skippedCount: skippedItems.length,
-        insertedItems: insertedItems,
-        skippedItems: skippedItems
-      }
-    );
+    const resultData = {
+      insertedCount: insertedItems.length,
+      skippedCount: skippedItems.length,
+      insertedItems: insertedItems,
+      skippedItems: skippedItems,
+      // first saved row (used by "Save & Add Sizes")
+      PrdColorCodeID: insertedItems[0] ? insertedItems[0].PrdColorCodeID : ""
+    };
+
+    // Nothing saved -> tell the client (was reported as success before)
+    if (insertedItems.length === 0) {
+      const skippedKeys = skippedItems.map((x) => x.ColorKeyCode).filter(Boolean);
+      const message = skippedKeys.length > 0
+        ? `Not added: Category ${skippedKeys.join(", ")} is already added to this product.`
+        : "Not added: this color already exists for this product.";
+      return res.status(409).json({ statusCode: 409, message, data: resultData, error: "duplicate" });
+    }
+
+    const message = skippedItems.length > 0
+      ? `Added ${insertedItems.length} color(s). Skipped (already added): ${skippedItems.map((x) => x.ColorKeyCode).filter(Boolean).join(", ")}.`
+      : "Product Color added successfully.";
+    return sendResponse(res, message, null, resultData);
 
   } catch (error) {
     console.log(error);
