@@ -8,6 +8,7 @@ const router = express.Router();
 router.post("/getmaincolor",prdcolor.getmaincolor);
 router.post("/getsubcolor", prdcolor.getsubcolor);
 router.post("/getprdcolormatchlist", prdcolor.getprdcolormatchlist);
-router.post("/getnearhexcolor",  prdcolor.getnearhexcolor);
+router.post("/getnearhexcolor", prdcolor.getnearhexcolor);
+
 module.exports = router;
 

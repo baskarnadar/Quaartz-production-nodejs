@@ -511,6 +511,11 @@ function sendResponse(res, message, error, results) {
   }
 };
 
+
+// =========================================================
+// Helper: normalize HEX to "#RRGGBB" (uppercase). "" when empty, null when invalid.
+// (getprdcolormatchlist keeps its own local version)
+// =========================================================
 function normalizeHexColor(value) {
   let hex = String(value || "").trim().replace(/\s+/g, "").toUpperCase();
   if (!hex) return "";
@@ -521,6 +526,24 @@ function normalizeHexColor(value) {
   return /^#[0-9A-F]{6}$/.test(hex) ? hex : null;
 }
 
+// =========================================================
+// getnearhexcolor
+// POST /api/app/prdcolor/getnearhexcolor
+// Body:
+//   HexValue     : "#E6E6E0"  (required; also accepts "E6E6E0", "#EEE")
+//   Limit        : 15         (optional, 1-15, default 15, max 15)
+//   ColorKeyCode : "SCS"      (optional, only search this category)
+//
+// Finds the nearest colors in tblPrdSpecialColor.
+// Distance = CIEDE2000 (how different two colors look to the human eye):
+//   0       -> exact same color
+//   < 1     -> difference not visible
+//   1 - 2   -> visible only on close look
+//   2 - 10  -> visible at a glance
+//   > 10    -> clearly different color
+// =========================================================
+
+// HEX "#RRGGBB" -> CIE Lab (D65)
 function hexToLab(hex) {
   const n = normalizeHexColor(hex);
   if (!n) return null;
@@ -619,7 +642,8 @@ function deltaE2000(lab1, lab2) {
       Rt * (dCp / Sc) * (dHp / Sh)
   );
 }
- exports.getnearhexcolor = async (req, res, next) => {
+
+exports.getnearhexcolor = async (req, res, next) => {
   try {
     const body = req.body || {};
     const rawHex = body.HexValue ?? body.HexColor ?? body.PrdColorCode ?? "";
@@ -638,24 +662,100 @@ function deltaE2000(lab1, lab2) {
     const limitNum = parseInt(body.Limit ?? MAX_LIMIT, 10);
     const Limit = Math.min(Math.max(Number.isNaN(limitNum) ? MAX_LIMIT : limitNum, 1), MAX_LIMIT);
 
+    // tblProductColor colors are shown FIRST only when they are close enough.
+    // CIEDE2000 distance: <= 10 means "same color family" to the eye.
+    const PRODUCT_COLOR_MAX_DISTANCE = 10;
+
     const ColorKeyCode = String(body.ColorKeyCode || "").trim();
+    const escapeRegex = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
     const db = await connectToMongoDB();
-    const collection = db.collection("tblPrdSpecialColor");
+    const targetLab = hexToLab(requestedHex);
 
-    // Optional category filter (ignores case and spaces)
-    const query = { HexValue: { $type: "string", $ne: "" } };
+    const measure = (hex) => {
+      const distance = deltaE2000(targetLab, hexToLab(hex));
+      return {
+        Distance: Number(distance.toFixed(2)),
+        // 0 distance = 100%, 50+ distance = 0%
+        SimilarityPercent: Number(Math.max(0, 100 - distance * 2).toFixed(2)),
+        IsExactMatch: hex === requestedHex,
+      };
+    };
+
+    // =========================================================
+    // STEP 1: tblProductColor.PrdColorCode (manual product colors)
+    //   WHERE IsDataStatus != 0
+    //     AND ProductID is set
+    //     AND PrdColorCode is a HEX value
+    // =========================================================
+    const productQuery = {
+      IsDataStatus: { $ne: 0 },
+      ProductID: { $nin: [null, "", "undefined"] },
+      PrdColorCode: { $type: "string", $ne: "" },
+    };
     if (ColorKeyCode) {
-      const escaped = ColorKeyCode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      query.ColorKeyCode = { $regex: `^\\s*${escaped}\\s*$`, $options: "i" };
+      productQuery.ColorKeyCode = { $regex: `^\\s*${escapeRegex(ColorKeyCode)}\\s*$`, $options: "i" };
     }
 
-    const colors = await collection
-      .find(query)
+    const productColors = await db
+      .collection("tblProductColor")
+      .find(productQuery)
+      .project({
+        _id: 1,
+        PrdColorCodeID: 1,
+        ProductID: 1,
+        PrdColorCode: 1,
+        sigmacolorcode: 1,
+        EnPrdColorName: 1,
+        ArPrdColorName: 1,
+        ColorKeyCode: 1,
+        ColorKeyCodeID: 1,
+      })
+      .toArray();
+
+    const productRanked = [];
+    for (const c of productColors) {
+      const hex = normalizeHexColor(c.PrdColorCode);
+      if (!hex) continue; // skip bad HEX values
+
+      const m = measure(hex);
+      if (m.Distance > PRODUCT_COLOR_MAX_DISTANCE) continue;
+
+      productRanked.push({
+        Source: "tblProductColor",
+        _id: c._id,
+        PrdColorCodeID: c.PrdColorCodeID || "",
+        ProductID: c.ProductID || "",
+        SplColorCodeIDPrKey: "",
+        sigmacolorcode: c.sigmacolorcode || "", // Sigma Color Code
+        ColorKeyCode: String(c.ColorKeyCode || "").trim(),
+        ColorKeyCodeID: c.ColorKeyCodeID || "",
+        HexValue: hex,
+        EnColorName: c.EnPrdColorName || c.sigmacolorcode || "",
+        ArColorName: c.ArPrdColorName || c.sigmacolorcode || "",
+        MainColorCodeID: "",
+        ...m,
+      });
+    }
+    productRanked.sort((x, y) => x.Distance - y.Distance);
+
+    // =========================================================
+    // STEP 2: tblPrdSpecialColor.HexValue (category palettes)
+    //   fills the remaining places up to Limit
+    // =========================================================
+    const specialQuery = { HexValue: { $type: "string", $ne: "" } };
+    if (ColorKeyCode) {
+      specialQuery.ColorKeyCode = { $regex: `^\\s*${escapeRegex(ColorKeyCode)}\\s*$`, $options: "i" };
+    }
+
+    const specialColors = await db
+      .collection("tblPrdSpecialColor")
+      .find(specialQuery)
       .project({
         _id: 1,
         SplColorCodeIDPrKey: 1,
         SplColorCodeID: 1,
+        sigmacolorcode: 1,
         ColorKeyCode: 1,
         ColorKeyCodeID: 1,
         HexValue: 1,
@@ -665,34 +765,36 @@ function deltaE2000(lab1, lab2) {
       })
       .toArray();
 
-    const targetLab = hexToLab(requestedHex);
-
-    const ranked = [];
-    for (const c of colors) {
+    const specialRanked = [];
+    for (const c of specialColors) {
       const hex = normalizeHexColor(c.HexValue);
-      if (!hex) continue; // skip bad HEX values in the table
+      if (!hex) continue; // skip bad HEX values
 
-      const distance = deltaE2000(targetLab, hexToLab(hex));
-
-      ranked.push({
+      specialRanked.push({
+        Source: "tblPrdSpecialColor",
         _id: c._id,
+        PrdColorCodeID: "",
+        ProductID: "",
         SplColorCodeIDPrKey: c.SplColorCodeIDPrKey || "",
-        SplColorCodeID: c.SplColorCodeID || "", // Sigma Color Code
+        // Sigma Color Code: tblPrdSpecialColor.SplColorCodeID -> sigmacolorcode
+        sigmacolorcode: c.SplColorCodeID || c.sigmacolorcode || "",
         ColorKeyCode: String(c.ColorKeyCode || "").trim(),
         ColorKeyCodeID: c.ColorKeyCodeID || "",
         HexValue: hex,
         EnColorName: c.EnColorName || "",
         ArColorName: c.ArColorName || "",
         MainColorCodeID: c.MainColorCodeID || "",
-        Distance: Number(distance.toFixed(2)),
-        // 0 distance = 100%, 50+ distance = 0%
-        SimilarityPercent: Number(Math.max(0, 100 - distance * 2).toFixed(2)),
-        IsExactMatch: hex === requestedHex,
+        ...measure(hex),
       });
     }
+    specialRanked.sort((x, y) => x.Distance - y.Distance);
 
-    ranked.sort((x, y) => x.Distance - y.Distance);
-    const nearest = ranked.slice(0, Limit);
+    // =========================================================
+    // STEP 3: tblProductColor first, then tblPrdSpecialColor, max Limit
+    // =========================================================
+    const productPart = productRanked.slice(0, Limit);
+    const specialPart = specialRanked.slice(0, Limit - productPart.length);
+    const nearest = [...productPart, ...specialPart];
 
     return sendResponse(
       res,
@@ -702,7 +804,9 @@ function deltaE2000(lab1, lab2) {
         RequestedHex: requestedHex,
         ColorKeyCode: ColorKeyCode,
         Limit: Limit,
-        TotalSearched: ranked.length,
+        ProductColorCount: productPart.length,
+        SpecialColorCount: specialPart.length,
+        TotalSearched: productColors.length + specialRanked.length,
         Data: nearest,
       }
     );
@@ -711,5 +815,3 @@ function deltaE2000(lab1, lab2) {
     next(error);
   }
 };
-
- 
