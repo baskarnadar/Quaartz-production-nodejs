@@ -520,6 +520,105 @@ function normalizeHexColor(value) {
   }
   return /^#[0-9A-F]{6}$/.test(hex) ? hex : null;
 }
+
+function hexToLab(hex) {
+  const n = normalizeHexColor(hex);
+  if (!n) return null;
+
+  const toLinear = (c) => {
+    const v = c / 255;
+    return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+
+  const r = toLinear(parseInt(n.substring(1, 3), 16));
+  const g = toLinear(parseInt(n.substring(3, 5), 16));
+  const b = toLinear(parseInt(n.substring(5, 7), 16));
+
+  // sRGB -> XYZ (D65), normalised by the white point
+  const x = (r * 0.4124564 + g * 0.3575761 + b * 0.1804375) / 0.95047;
+  const y = (r * 0.2126729 + g * 0.7151522 + b * 0.0721750) / 1.0;
+  const z = (r * 0.0193339 + g * 0.1191920 + b * 0.9503041) / 1.08883;
+
+  const f = (t) => (t > 216 / 24389 ? Math.cbrt(t) : (24389 / 27 * t + 16) / 116);
+  const fx = f(x);
+  const fy = f(y);
+  const fz = f(z);
+
+  return { L: 116 * fy - 16, a: 500 * (fx - fy), b: 200 * (fy - fz) };
+}
+
+// CIEDE2000 colour difference between two Lab colours
+function deltaE2000(lab1, lab2) {
+  const rad = Math.PI / 180;
+  const deg = 180 / Math.PI;
+
+  const { L: L1, a: a1, b: b1 } = lab1;
+  const { L: L2, a: a2, b: b2 } = lab2;
+
+  const C1 = Math.sqrt(a1 * a1 + b1 * b1);
+  const C2 = Math.sqrt(a2 * a2 + b2 * b2);
+  const Cbar = (C1 + C2) / 2;
+  const Cbar7 = Math.pow(Cbar, 7);
+  const G = 0.5 * (1 - Math.sqrt(Cbar7 / (Cbar7 + Math.pow(25, 7))));
+
+  const a1p = (1 + G) * a1;
+  const a2p = (1 + G) * a2;
+  const C1p = Math.sqrt(a1p * a1p + b1 * b1);
+  const C2p = Math.sqrt(a2p * a2p + b2 * b2);
+
+  const hp = (bb, ap) => {
+    if (bb === 0 && ap === 0) return 0;
+    const h = Math.atan2(bb, ap) * deg;
+    return h >= 0 ? h : h + 360;
+  };
+  const h1p = hp(b1, a1p);
+  const h2p = hp(b2, a2p);
+
+  const dLp = L2 - L1;
+  const dCp = C2p - C1p;
+
+  let dhp = 0;
+  if (C1p * C2p !== 0) {
+    dhp = h2p - h1p;
+    if (dhp > 180) dhp -= 360;
+    else if (dhp < -180) dhp += 360;
+  }
+  const dHp = 2 * Math.sqrt(C1p * C2p) * Math.sin((dhp / 2) * rad);
+
+  const Lbp = (L1 + L2) / 2;
+  const Cbp = (C1p + C2p) / 2;
+
+  let hbp = h1p + h2p;
+  if (C1p * C2p !== 0) {
+    if (Math.abs(h1p - h2p) > 180) {
+      hbp = h1p + h2p < 360 ? (h1p + h2p + 360) / 2 : (h1p + h2p - 360) / 2;
+    } else {
+      hbp = (h1p + h2p) / 2;
+    }
+  }
+
+  const T =
+    1 -
+    0.17 * Math.cos((hbp - 30) * rad) +
+    0.24 * Math.cos(2 * hbp * rad) +
+    0.32 * Math.cos((3 * hbp + 6) * rad) -
+    0.2 * Math.cos((4 * hbp - 63) * rad);
+
+  const dTheta = 30 * Math.exp(-Math.pow((hbp - 275) / 25, 2));
+  const Cbp7 = Math.pow(Cbp, 7);
+  const Rc = 2 * Math.sqrt(Cbp7 / (Cbp7 + Math.pow(25, 7)));
+  const Sl = 1 + (0.015 * Math.pow(Lbp - 50, 2)) / Math.sqrt(20 + Math.pow(Lbp - 50, 2));
+  const Sc = 1 + 0.045 * Cbp;
+  const Sh = 1 + 0.015 * Cbp * T;
+  const Rt = -Math.sin(2 * dTheta * rad) * Rc;
+
+  return Math.sqrt(
+    Math.pow(dLp / Sl, 2) +
+      Math.pow(dCp / Sc, 2) +
+      Math.pow(dHp / Sh, 2) +
+      Rt * (dCp / Sc) * (dHp / Sh)
+  );
+}
  exports.getnearhexcolor = async (req, res, next) => {
   try {
     const body = req.body || {};
