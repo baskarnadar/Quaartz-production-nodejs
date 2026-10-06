@@ -84,9 +84,9 @@ exports.getprdcolorbyidgroup = async (req, res, next) => {
 };
  exports.getprdcolorbyid = async (req, res, next) => {
   try {
-    const ProductID = req.body.ProductID;
+    const ProductID = String(req.body.ProductID || "").trim();
 
-    if (!ProductID || String(ProductID).trim() === "") {
+    if (!ProductID) {
       return sendResponse(
         res,
         "ProductID is required.",
@@ -100,56 +100,100 @@ exports.getprdcolorbyidgroup = async (req, res, next) => {
     const productColorCollection = db.collection("tblProductColor");
     const specialColorCollection = db.collection("tblPrdSpecialColor");
 
+    const escapeRegex = (value) =>
+      String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    // ---------------------------------------------------------
+    // 1) Product colors
+    //    WHERE tblProductColor.ProductID = ProductID
+    //      AND tblProductColor.IsDataStatus != 0  (skip deleted)
+    // ---------------------------------------------------------
     const productColors = await productColorCollection
-      .find({ ProductID })
+      .find({ ProductID, IsDataStatus: { $ne: 0 } })
       .toArray();
 
     const finalColors = [];
+    const addedCategories = new Set(); // avoid showing the same palette twice
 
     for (const color of productColors) {
       const ColorKeyCode = String(color.ColorKeyCode || "").trim();
+      const ColorKeyCodeID = String(color.ColorKeyCodeID || "").trim();
 
-      if (ColorKeyCode !== "") {
-        const specialColors = await specialColorCollection
-          .find({ ColorKeyCode })
-          .toArray();
-
-        if (specialColors.length > 0) {
-          specialColors.forEach((spColor) => {
-            finalColors.push({
-              _id: spColor._id,
-              EnPrdColorName: spColor.EnColorName || spColor.EnPrdColorName || "",
-              ArPrdColorName: spColor.ArColorName || spColor.ArPrdColorName || "",
-              ProductID,
-
-              // Color value from tblPrdSpecialColor
-              HexValue: spColor.HexValue || "",
-              PrdColorCode: spColor.HexValue || "",
-
-              PrdColorCodeID: spColor.SplColorCodeIDPrKey || "",
-              SplColorCodeID: spColor.SplColorCodeID || "",
-              SplColorCodeIDPrKey: spColor.SplColorCodeIDPrKey || "",
-              ColorKeyCode: spColor.ColorKeyCode || ColorKeyCode,
-
-              // Sigma Color Code
-              sigmacolorcode: spColor.SplColorCodeID || "",
-            });
-          });
-        } else {
-          finalColors.push({
-            ...color,
-            HexValue: color.HexValue || "",
-            SplColorCodeID: color.SplColorCodeID || "",
-            ColorKeyCode: color.ColorKeyCode || "",
-            sigmacolorcode: color.sigmacolorcode || "",
-          });
-        }
-      } else {
+      // Manual color (no category) -> return the row itself
+      if (!ColorKeyCode && !ColorKeyCodeID) {
         finalColors.push({
           ...color,
-          HexValue: color.HexValue || "",
+          // tblProductColor stores the HEX in PrdColorCode
+          HexValue: color.HexValue || color.PrdColorCode || "",
           SplColorCodeID: color.SplColorCodeID || "",
-          ColorKeyCode: color.ColorKeyCode || "",
+          ColorKeyCode: "",
+          ColorKeyCodeID: "",
+          sigmacolorcode: color.sigmacolorcode || "",
+        });
+        continue;
+      }
+
+      const categoryKey = (ColorKeyCodeID || ColorKeyCode).toUpperCase();
+      if (addedCategories.has(categoryKey)) continue;
+
+      // ---------------------------------------------------------
+      // 2) Category palette
+      //    WHERE tblPrdSpecialColor.ColorKeyCodeID = tblProductColor.ColorKeyCodeID
+      //       OR tblPrdSpecialColor.ColorKeyCode   = tblProductColor.ColorKeyCode
+      //    (ColorKeyCode match ignores case and spaces)
+      // ---------------------------------------------------------
+      const orConditions = [];
+      if (ColorKeyCodeID) {
+        orConditions.push({ ColorKeyCodeID: ColorKeyCodeID });
+      }
+      if (ColorKeyCode) {
+        orConditions.push({
+          ColorKeyCode: {
+            $regex: `^\\s*${escapeRegex(ColorKeyCode)}\\s*$`,
+            $options: "i",
+          },
+        });
+      }
+
+      const specialColors = await specialColorCollection
+        .find({ $or: orConditions })
+        .toArray();
+
+      if (specialColors.length > 0) {
+        addedCategories.add(categoryKey);
+
+        specialColors.forEach((spColor) => {
+          finalColors.push({
+            _id: spColor._id,
+            EnPrdColorName: spColor.EnColorName || spColor.EnPrdColorName || "",
+            ArPrdColorName: spColor.ArColorName || spColor.ArPrdColorName || "",
+            ProductID,
+
+            // Color value from tblPrdSpecialColor
+            HexValue: spColor.HexValue || "",
+            PrdColorCode: spColor.HexValue || "",
+
+            PrdColorCodeID: spColor.SplColorCodeIDPrKey || "",
+            SplColorCodeID: spColor.SplColorCodeID || "",
+            SplColorCodeIDPrKey: spColor.SplColorCodeIDPrKey || "",
+            ColorKeyCode: String(spColor.ColorKeyCode || ColorKeyCode).trim(),
+            ColorKeyCodeID: spColor.ColorKeyCodeID || ColorKeyCodeID,
+
+            // Sigma Color Code
+            sigmacolorcode: spColor.SplColorCodeID || "",
+          });
+        });
+      } else {
+        // Category has no palette colors -> return the row itself
+        console.warn(
+          `[getprdcolorbyid] No tblPrdSpecialColor rows for ColorKeyCodeID="${ColorKeyCodeID}" / ColorKeyCode="${ColorKeyCode}"`
+        );
+        finalColors.push({
+          ...color,
+          HexValue: color.HexValue || color.PrdColorCode || "",
+          SplColorCodeID: color.SplColorCodeID || "",
+          ColorKeyCode: ColorKeyCode,
+          ColorKeyCodeID: ColorKeyCodeID,
           sigmacolorcode: color.sigmacolorcode || "",
         });
       }
