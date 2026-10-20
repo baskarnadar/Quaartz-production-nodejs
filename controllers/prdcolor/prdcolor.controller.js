@@ -26,6 +26,30 @@ function normalizeHexColor(value) {
 }
 
 // =========================================================
+// Product color image (tblProductColor.PrdColorImageName)
+// Only the file name is saved in the DB. The file itself is uploaded
+// to S3 folder "files/product/colors" via /api/product/upload/uploadImage.
+// Full URL = IMAGEURL + "product/colors/" + PrdColorImageName
+// =========================================================
+function cleanImageName(value) {
+  // keep only the file name (strip any folder / URL part)
+  const name = String(value || "").trim().split("/").pop();
+  return name;
+}
+
+// PrdColorType: "IMAGE" when an image is uploaded, otherwise "HEX"
+function getColorType(imageName) {
+  return cleanImageName(imageName) ? "IMAGE" : "HEX";
+}
+
+function getColorImageUrl(name) {
+  const file = cleanImageName(name);
+  if (!file) return "";
+  const root = String(process.env.IMAGEURL || "").replace(/\/+$/, "");
+  return `${root}/product/colors/${file}`;
+}
+
+// =========================================================
 // Helper: look up a category in tblprdColorKeyCode.
 // Returns { ColorKeyCode, ColorKeyCodeID } using the values stored
 // in tblprdColorKeyCode. Matching is case-insensitive and trimmed.
@@ -71,6 +95,11 @@ exports.getprdcolorbyidgroup = async (req, res, next) => {
    const collection = await db.collection('tblProductColor'); 
    collection.find({ ProductID: ProductID }).toArray()
    .then(documents => {
+    documents.forEach((d) => {
+      d.PrdColorImageName = d.PrdColorImageName || "";
+      d.PrdColorImageUrl = getColorImageUrl(d.PrdColorImageName);
+      d.PrdColorType = d.PrdColorType || getColorType(d.PrdColorImageName); // old rows: derive
+    });
     sendResponse(res, "Color  successfully.",  null , documents);
    })
    .catch(err => {
@@ -119,6 +148,11 @@ exports.getprdcolorbyidgroup = async (req, res, next) => {
       const ColorKeyCode = String(color.ColorKeyCode || "").trim();
       const ColorKeyCodeID = String(color.ColorKeyCodeID || "").trim();
 
+      // Product color image (same image for the whole row / category palette)
+      const PrdColorImageName = color.PrdColorImageName || "";
+      const PrdColorImageUrl = getColorImageUrl(PrdColorImageName);
+      const PrdColorType = color.PrdColorType || getColorType(PrdColorImageName);
+
       // Manual color (no category) -> return the row itself
       if (!ColorKeyCode && !ColorKeyCodeID) {
         finalColors.push({
@@ -129,6 +163,9 @@ exports.getprdcolorbyidgroup = async (req, res, next) => {
           ColorKeyCode: "",
           ColorKeyCodeID: "",
           sigmacolorcode: color.sigmacolorcode || "",
+          PrdColorImageName,
+          PrdColorImageUrl,
+          PrdColorType,
         });
         continue;
       }
@@ -181,6 +218,11 @@ exports.getprdcolorbyidgroup = async (req, res, next) => {
 
             // Sigma Color Code
             sigmacolorcode: spColor.SplColorCodeID || "",
+
+            // Image of the tblProductColor row this palette belongs to
+            PrdColorImageName,
+            PrdColorImageUrl,
+            PrdColorType,
           });
         });
       } else {
@@ -195,6 +237,9 @@ exports.getprdcolorbyidgroup = async (req, res, next) => {
           ColorKeyCode: ColorKeyCode,
           ColorKeyCodeID: ColorKeyCodeID,
           sigmacolorcode: color.sigmacolorcode || "",
+          PrdColorImageName,
+          PrdColorImageUrl,
+          PrdColorType,
         });
       }
     }
@@ -266,6 +311,13 @@ exports.editPrdColor = async (req, res, next) => {
     PrdColorCode: PrdColorCode,
     sigmacolorcode: sigmacolorcode
   };
+
+  // Product color image: only touched when the client sends it,
+  // so older clients keep the current image. "" removes the image.
+  if (Object.prototype.hasOwnProperty.call(req.body, 'PrdColorImageName')) {
+    updatedData.PrdColorImageName = cleanImageName(req.body.PrdColorImageName);
+    updatedData.PrdColorType = getColorType(updatedData.PrdColorImageName);
+  }
 
   // Category (ColorKeyCode): one per color row. Only touched when the client sends it,
   // so older clients that don't send it keep the current value.
@@ -356,6 +408,11 @@ exports.editPrdColor = async (req, res, next) => {
     const EnPrdColorName = String(req.body.EnPrdColorName || "").trim() || sigmacolorcode || PrdColorCode;
     const ArPrdColorName = String(req.body.ArPrdColorName || "").trim() || sigmacolorcode || PrdColorCode;
 
+    // Product color image file name (optional)
+    const PrdColorImageName = cleanImageName(req.body.PrdColorImageName);
+    // IMAGE when an image is uploaded, otherwise HEX (always follows the image)
+    const PrdColorType = getColorType(PrdColorImageName);
+
     const rawColorKeyCode = req.body.ColorKeyCode;
 
     const ColorKeyCodeArray = Array.isArray(rawColorKeyCode)
@@ -426,7 +483,9 @@ exports.editPrdColor = async (req, res, next) => {
           updatedBy: "USER",
           IsDataStatus: 1,
           ColorKeyCode: ColorKeyCode,
-          ColorKeyCodeID: ColorKeyCodeID
+          ColorKeyCodeID: ColorKeyCodeID,
+          PrdColorImageName: PrdColorImageName,
+          PrdColorType: PrdColorType
         };
 
         await collection.insertOne(Productitem);
@@ -467,7 +526,9 @@ exports.editPrdColor = async (req, res, next) => {
           updatedBy: "USER",
           IsDataStatus: 1,
           ColorKeyCode: "",
-          ColorKeyCodeID: ""
+          ColorKeyCodeID: "",
+          PrdColorImageName: PrdColorImageName,
+          PrdColorType: PrdColorType
         };
 
         await collection.insertOne(Productitem);
