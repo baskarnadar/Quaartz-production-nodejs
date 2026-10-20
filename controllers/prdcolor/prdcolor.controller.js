@@ -28,8 +28,8 @@ function normalizeHexColor(value) {
 // =========================================================
 // Product color image (tblProductColor.PrdColorImageName)
 // Only the file name is saved in the DB. The file itself is uploaded
-// to S3 folder "files/product/images" (same as product images) via /api/product/upload/uploadImage.
-// Full URL = IMAGEURL + "product/images/" + PrdColorImageName
+// to S3 folder "files/product/prdcolor" via /api/product/upload/uploadImage.
+// Full URL = IMAGEURL + "product/prdcolor/" + PrdColorImageName
 // =========================================================
 function cleanImageName(value) {
   // keep only the file name (strip any folder / URL part)
@@ -46,7 +46,7 @@ function getColorImageUrl(name) {
   const file = cleanImageName(name);
   if (!file) return "";
   const root = String(process.env.IMAGEURL || "").replace(/\/+$/, "");
-  return `${root}/product/images/${file}`;
+  return `${root}/product/prdcolor/${file}`;
 }
 
 // =========================================================
