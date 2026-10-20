@@ -528,13 +528,51 @@ exports.deleteaccount = async (req, res, next) => {
   }
 };
 
- exports.accountforgotpwd = async (req, res, next) => {
-  try {
-    const RegEmailAddress = String(req.body?.RegEmailAddress || '')
-      .trim()
-      .toLowerCase();
+// ---------------------------------------------------------------------------
+// Password helpers (same hashing as regaccount / signin)
+//   RegPassword = md5(RegEmailAddress + password) -> bytes joined as decimals
+// ---------------------------------------------------------------------------
+function makePwdKey(email, password) {
+  let pwdkey = '';
+  const md5Key = crypto.createHash('md5').update(email + password, 'utf-8').digest();
+  for (let i = 0; i < md5Key.length; i++) {
+    pwdkey += md5Key[i];
+  }
+  return pwdkey;
+}
 
-    if (!RegEmailAddress) {
+// 8-char temporary password: letters + digits, no look-alike chars (0 O 1 l I)
+function generateTempPassword(length = 8) {
+  const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz';
+  const digits = '23456789';
+  const all = letters + digits;
+  const chars = [
+    letters[crypto.randomInt(letters.length)],
+    digits[crypto.randomInt(digits.length)],
+  ];
+  while (chars.length < length) chars.push(all[crypto.randomInt(all.length)]);
+  // shuffle
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
+}
+
+const escapeRegex = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// ---------------------------------------------------------------------------
+// Forgot password
+//  1. find the account by email (case-insensitive)
+//  2. create a new temporary password, save its hash (same as registration)
+//  3. send it with the branded "password reset" email template
+//  4. if the email fails -> restore the old password (user is not locked out)
+// ---------------------------------------------------------------------------
+exports.accountforgotpwd = async (req, res, next) => {
+  try {
+    const inputEmail = String(req.body?.RegEmailAddress || '').trim();
+
+    if (!inputEmail) {
       return res.status(400).json({
         statusCode: 400,
         message: 'RegEmailAddress is required.',
@@ -542,7 +580,15 @@ exports.deleteaccount = async (req, res, next) => {
     }
 
     const db = await connectToMongoDB();
-    const user = await db.collection('tblreginfo').findOne({ RegEmailAddress });
+    const users = db.collection('tblreginfo');
+
+    // Exact match first, then case-insensitive (emails may be saved with capitals)
+    let user = await users.findOne({ RegEmailAddress: inputEmail });
+    if (!user) {
+      user = await users.findOne({
+        RegEmailAddress: { $regex: `^${escapeRegex(inputEmail)}$`, $options: 'i' },
+      });
+    }
 
     if (!user) {
       return res.status(404).json({
@@ -551,38 +597,42 @@ exports.deleteaccount = async (req, res, next) => {
       });
     }
 
-    // Generate a temporary new password (8 chars)
-    const newPassword = Math.random().toString(36).slice(-8);
+    // Hash with the email EXACTLY as stored - signin hashes the same way
+    const storedEmail = String(user.RegEmailAddress || '').trim();
+    const newPassword = generateTempPassword(8);
+    const newPwdKey = makePwdKey(storedEmail, newPassword);
+    const oldPwdKey = user.RegPassword;
 
-    // Your existing md5 -> numeric string logic (kept)
-    let pwdkey = '';
-    const value = RegEmailAddress + newPassword;
-    const md5Key = crypto.createHash('md5').update(value, 'utf-8').digest();
-    for (let i = 0; i < md5Key.length; i++) {
-      pwdkey += md5Key[i];
-    }
+    // Save new password
+    await users.updateOne(
+      { RegUserID: user.RegUserID },
+      {
+        $set: {
+          RegPassword: newPwdKey,
+          PwdResetAt: new Date(),
+          modifiedAt: new Date(),
+        },
+      }
+    );
 
-    // Update password in DB
-    // await db.collection('tblreginfo').updateOne(
-    //   { RegUserID: user.RegUserID },
-    //   { $set: { RegPassword: pwdkey, modifiedAt: new Date() } }
-    // );
-
-    // Send email
+    // Send email (branded template, same style as registration)
     try {
-      // await EmailService.sendForgotPasswordEmail(RegEmailAddress, {
-      //   fullName: user.RegFullName || 'Customer',
-      //   newPassword,
-      //   appName: 'Sigma Paints',
-      // });
+      await EmailService.sendForgotPasswordEmail(storedEmail, {
+        fullName: user.RegFullName || 'Customer',
+        newPassword,
+      });
     } catch (mailErr) {
-      console.error('❌ Forgot password email failed:', mailErr);
+      console.error('❌ Forgot password email failed:', mailErr?.message || mailErr);
 
-      // Password updated but email failed (important to tell admin/customer)
+      // Email not sent -> put the old password back so the user can still log in
+      await users.updateOne(
+        { RegUserID: user.RegUserID },
+        { $set: { RegPassword: oldPwdKey, modifiedAt: new Date() } }
+      );
+
       return res.status(500).json({
         statusCode: 500,
-        message:
-          'Password was reset but email could not be sent. Please contact support.',
+        message: 'Password reset email could not be sent. Please try again later.',
         error: String(mailErr?.message || mailErr),
       });
     }

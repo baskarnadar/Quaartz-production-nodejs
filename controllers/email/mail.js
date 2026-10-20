@@ -7,7 +7,7 @@ const transporter = nodemailer.createTransport({
   secure: false,                     // true for 465, false for 587
   auth: {
     user: process.env.SMTP_USER,     // your email
-    pass: process.env.SMTP_PASS,     // your email password or app password
+    pass: process.env.SMTP_PASS || process.env.SMTP_PASSWORD,     // your email password or app password
   },
 });
 
