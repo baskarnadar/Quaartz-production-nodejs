@@ -219,10 +219,11 @@ exports.getprdcolorbyidgroup = async (req, res, next) => {
             // Sigma Color Code
             sigmacolorcode: spColor.SplColorCodeID || "",
 
-            // Image of the tblProductColor row this palette belongs to
-            PrdColorImageName,
-            PrdColorImageUrl,
-            PrdColorType,
+            // Category palette colors are real HEX colors from tblPrdSpecialColor.
+            // Image / Type belong to manual colors only ("Others" group in the app).
+            PrdColorImageName: "",
+            PrdColorImageUrl: "",
+            PrdColorType: "",
           });
         });
       } else {
