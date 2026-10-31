@@ -8,7 +8,7 @@
 //     body: { RegEmailAddress, otp, newPassword }  → verifies OTP, updates password
 
 const crypto  = require('crypto');
-const { connectToMongoDB } = require('../../config/db');      // adjust to your DB helper path
+const { connectToMongoDB } = require('../../database/mongodb');
 const transporter            = require('../email/mail');
 const { forgotOtpTemplate }  = require('../emailtemplates/forgotOtpTemplate');
 
