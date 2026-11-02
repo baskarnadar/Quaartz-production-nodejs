@@ -24,7 +24,6 @@ exports.getyearlist = async (req, res, next) => {
           YearID: 1,
           EnYearName: 1,
           ArYearName: 1,
-          OrderID: 1,
           IsDataStatus: 1,
           CreatedAt: 1,
           CreatedBy: 1,
@@ -32,7 +31,7 @@ exports.getyearlist = async (req, res, next) => {
           ModifyBy: 1,
         },
       },
-      { $sort: { OrderID: 1, CreatedAt: -1 } },
+      { $sort: { CreatedAt: -1 } },
       { $skip: skip },
       { $limit: Number(limit) },
     ]).toArray();
@@ -60,7 +59,6 @@ exports.getYear = async (req, res, next) => {
           YearID: 1,
           EnYearName: 1,
           ArYearName: 1,
-          OrderID: 1,
           IsDataStatus: 1,
           CreatedAt: 1,
           CreatedBy: 1,
@@ -83,7 +81,7 @@ exports.getYear = async (req, res, next) => {
 
 exports.createYear = async (req, res, next) => {
   try {
-    const { EnYearName, ArYearName, OrderID } = req.body;
+    const { EnYearName, ArYearName } = req.body;
 
     if (!EnYearName || !ArYearName) {
       return sendResponse(res, "EnYearName and ArYearName are required", true, null, 0);
@@ -94,7 +92,6 @@ exports.createYear = async (req, res, next) => {
       YearID: generateUniqueId(),
       EnYearName,
       ArYearName,
-      OrderID: Number(OrderID) || 0,
       IsDataStatus: req.body.IsDataStatus ?? 1,
       CreatedAt: new Date(),
       CreatedBy: req.body.CreatedBy || null,
@@ -123,7 +120,6 @@ exports.updateYear = async (req, res, next) => {
     const updateFields = {
       EnYearName: req.body.EnYearName,
       ArYearName: req.body.ArYearName,
-      OrderID: Number(req.body.OrderID) || 0,
       IsDataStatus: req.body.IsDataStatus,
       ModifyAt: new Date(),
       ModifyBy: req.body.ModifyBy || null,
