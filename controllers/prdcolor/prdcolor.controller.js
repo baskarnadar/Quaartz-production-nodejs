@@ -50,6 +50,22 @@ function getColorImageUrl(name) {
 }
 
 // =========================================================
+// Special color image (tblPrdSpecialColor.SplColorImageName)
+// Uploaded to S3 folder "files/product/splcolor" (see
+// controllers/lookupdata/splprdcolor/splprdcolor.controller.js).
+// Full URL = IMAGEURL + "product/splcolor/" + SplColorImageName
+// Category/palette colors below come from tblPrdSpecialColor, so they
+// need this URL builder, not getColorImageUrl() (that one is only for
+// tblProductColor's own PrdColorImageName, the "Others" manual colors).
+// =========================================================
+function getSplColorImageUrl(name) {
+  const file = cleanImageName(name);
+  if (!file) return "";
+  const root = String(process.env.IMAGEURL || "").replace(/\/+$/, "");
+  return `${root}/product/splcolor/${file}`;
+}
+
+// =========================================================
 // Helper: look up a category in tblprdColorKeyCode.
 // Returns { ColorKeyCode, ColorKeyCodeID } using the values stored
 // in tblprdColorKeyCode. Matching is case-insensitive and trimmed.
@@ -200,6 +216,15 @@ exports.getprdcolorbyidgroup = async (req, res, next) => {
         addedCategories.add(categoryKey);
 
         specialColors.forEach((spColor) => {
+          // Category palette colors come from tblPrdSpecialColor. When that
+          // row has its own uploaded image (SplColorImageName, added via
+          // "Add/Modify Special Product Color"), show that image instead of
+          // the HEX swatch - same IMAGE/HEX rule as the manual ("Others")
+          // colors below, just sourced from a different field/folder.
+          const SplColorImageName = spColor.SplColorImageName || "";
+          const SplColorImageUrl = getSplColorImageUrl(SplColorImageName);
+          const palettePrdColorType = SplColorImageUrl ? "IMAGE" : "HEX";
+
           finalColors.push({
             _id: spColor._id,
             EnPrdColorName: spColor.EnColorName || spColor.EnPrdColorName || "",
@@ -219,11 +244,10 @@ exports.getprdcolorbyidgroup = async (req, res, next) => {
             // Sigma Color Code
             sigmacolorcode: spColor.SplColorCodeID || "",
 
-            // Category palette colors are real HEX colors from tblPrdSpecialColor.
-            // Image / Type belong to manual colors only ("Others" group in the app).
-            PrdColorImageName: "",
-            PrdColorImageUrl: "",
-            PrdColorType: "",
+            // ✅ now passed through instead of being hardcoded empty
+            PrdColorImageName: SplColorImageName,
+            PrdColorImageUrl: SplColorImageUrl,
+            PrdColorType: palettePrdColorType,
           });
         });
       } else {
