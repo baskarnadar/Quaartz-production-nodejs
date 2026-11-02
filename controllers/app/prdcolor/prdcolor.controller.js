@@ -377,6 +377,96 @@ function deltaE2000(lab1, lab2) {
   );
 }
 
+// =========================================================
+// ✅ NEW: "Color By Trend" screen support
+// Swatches live in tblPrdSpecialColor where ColorKeyCode = "COLOR BY TREND"
+// (same table/pattern as splprdcolor.controller.js in the CMS), each one
+// optionally tagged with a YearID that references tbllokyear.
+// =========================================================
+const TREND_COLOR_KEY_CODE = "COLOR BY TREND";
+
+// file name only -> full S3 URL (same folder used by the CMS upload: files/product/splcolor)
+function cleanSplImageName(value) {
+  return String(value || "").trim().split("/").pop();
+}
+function getSplColorImageUrl(name) {
+  const file = cleanSplImageName(name);
+  if (!file) return "";
+  const root = String(process.env.IMAGEURL || "").replace(/\/+$/, "");
+  return `${root}/product/splcolor/${file}`;
+}
+
+// =========================================================
+// gettrendyearlist
+// POST /api/app/prdcolor/gettrendyearlist
+// Returns only the Years (tbllokyear) that actually have at least one
+// "COLOR BY TREND" color saved against them, newest first - these back
+// the "YEAR 2024" / "YEAR 2023" tabs on the trend color screen.
+// =========================================================
+exports.gettrendyearlist = async (req, res, next) => {
+  try {
+    const db = await connectToMongoDB();
+
+    // distinct, non-empty YearIDs actually used by a trend color
+    const usedYearIds = await db.collection("tblPrdSpecialColor").distinct("YearID", {
+      ColorKeyCode: { $regex: `^\\s*${TREND_COLOR_KEY_CODE}\\s*$`, $options: "i" },
+      IsDataStatus: { $ne: 0 },
+      YearID: { $nin: [null, ""] },
+    });
+
+    if (!usedYearIds.length) {
+      return sendResponse(res, "No trend color years found.", null, []);
+    }
+
+    const years = await db
+      .collection("tbllokyear")
+      .find({ YearID: { $in: usedYearIds }, IsDataStatus: { $ne: 0 } })
+      .project({ YearID: 1, EnYearName: 1, ArYearName: 1 })
+      .sort({ EnYearName: -1 })
+      .toArray();
+
+    return sendResponse(res, "Trend color years fetched successfully.", null, years);
+  } catch (error) {
+    console.error("gettrendyearlist error:", error);
+    next(error);
+  }
+};
+
+// =========================================================
+// gettrendcolorlist
+// POST /api/app/prdcolor/gettrendcolorlist
+// Body: { YearID }  (optional - omit to get every "COLOR BY TREND" color)
+// =========================================================
+exports.gettrendcolorlist = async (req, res, next) => {
+  try {
+    const db = await connectToMongoDB();
+    const YearID = String(req.body?.YearID || "").trim();
+
+    const filter = {
+      ColorKeyCode: { $regex: `^\\s*${TREND_COLOR_KEY_CODE}\\s*$`, $options: "i" },
+      IsDataStatus: { $ne: 0 },
+    };
+    if (YearID) filter.YearID = YearID;
+
+    const documents = await db
+      .collection("tblPrdSpecialColor")
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    const result = documents.map((item) => ({
+      ...item,
+      SplColorImageName: item.SplColorImageName || "",
+      SplColorImageUrl: getSplColorImageUrl(item.SplColorImageName),
+    }));
+
+    return sendResponse(res, `${result.length} trend color(s) found.`, null, result);
+  } catch (error) {
+    console.error("gettrendcolorlist error:", error);
+    next(error);
+  }
+};
+
 exports.getnearhexcolor = async (req, res, next) => {
   try {
     const body = req.body || {};
