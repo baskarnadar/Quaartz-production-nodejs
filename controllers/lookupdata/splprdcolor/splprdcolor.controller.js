@@ -12,6 +12,35 @@ function sendResponse(res, message, error, results) {
   });
 }
 
+// =========================================================
+// Special color image (tblPrdSpecialColor.SplColorImageName)
+// Only the file name is saved in the DB. The file itself is uploaded
+// to S3 via /api/product/upload/uploadImage with
+// foldername = "files/product/splcolor" (see new.js / modify.js).
+// Full URL = IMAGEURL + "product/splcolor/" + SplColorImageName
+// Same pattern as tblProductColor.PrdColorImageName in prdcolor.controller.js.
+// =========================================================
+function cleanImageName(value) {
+  // keep only the file name (strip any folder / URL part)
+  return String(value || "").trim().split("/").pop();
+}
+
+function getSplColorImageUrl(name) {
+  const file = cleanImageName(name);
+  if (!file) return "";
+  const root = String(process.env.IMAGEURL || "").replace(/\/+$/, "");
+  return `${root}/product/splcolor/${file}`;
+}
+
+function withImageUrl(doc) {
+  if (!doc) return doc;
+  return {
+    ...doc,
+    SplColorImageName: doc.SplColorImageName || "",
+    SplColorImageUrl: getSplColorImageUrl(doc.SplColorImageName),
+  };
+}
+
 // ------------------------------------------------------------
 // GET: list all special product colors
 // Table: tblPrdSpecialColor
@@ -141,8 +170,8 @@ exports.getSplcolorlist = async (req, res, next) => {
       "Special color fetched successfully.",
       null,
       {
-        // ✅ Main records
-        records: documents,
+        // ✅ Main records (each carries SplColorImageUrl, rebuilt from SplColorImageName)
+        records: documents.map(withImageUrl),
 
         // ✅ Direct total count
         totalRecords: totalRecords,
@@ -188,7 +217,7 @@ exports.editSplColor = async (req, res, next) => {
       return sendResponse(res, "Special color not found.", "not_found", null);
     }
 
-    return sendResponse(res, "Special color fetched successfully.", null, existingData);
+    return sendResponse(res, "Special color fetched successfully.", null, withImageUrl(existingData));
   } catch (error) {
     console.error("editSplColor error:", error);
     next(error);
@@ -219,6 +248,7 @@ exports.addSplColor = async (req, res, next) => {
       HexValue,
       EnColorName,
       ArColorName,
+      SplColorImageName,
       IsDataStatus,
       CreatedBy,
       ModifyBy,
@@ -273,6 +303,7 @@ exports.addSplColor = async (req, res, next) => {
       HexValue: String(HexValue).trim(),
       EnColorName: String(EnColorName).trim(),
       ArColorName: String(ArColorName).trim(),
+      SplColorImageName: cleanImageName(SplColorImageName),
 
       createdAt: now,
       modifiedAt: now,
@@ -285,7 +316,7 @@ exports.addSplColor = async (req, res, next) => {
 
     return sendResponse(res, "Special color inserted successfully.", null, {
       insertedId: result?.insertedId || null,
-      ...specialColorItem,
+      ...withImageUrl(specialColorItem),
     });
   } catch (error) {
     console.error("addSplColor error:", error);
@@ -352,6 +383,7 @@ exports.updateSplColor = async (req, res, next) => {
       HexValue,
       EnColorName,
       ArColorName,
+      SplColorImageName,
       IsDataStatus,
       ModifyBy,
     } = req.body || {};
@@ -387,6 +419,10 @@ exports.updateSplColor = async (req, res, next) => {
     if (HexValue !== undefined) setDoc.HexValue = String(HexValue).trim();
     if (EnColorName !== undefined) setDoc.EnColorName = String(EnColorName).trim();
     if (ArColorName !== undefined) setDoc.ArColorName = String(ArColorName).trim();
+    // Image name is optional: only overwritten when the client sends the field
+    // (it always sends it - either the existing name unchanged, a new name
+    // after a fresh upload, or "" after "Remove image").
+    if (SplColorImageName !== undefined) setDoc.SplColorImageName = cleanImageName(SplColorImageName);
     if (IsDataStatus !== undefined) setDoc.IsDataStatus = Number(IsDataStatus);
 
     const duplicateFilter = {
@@ -420,7 +456,7 @@ exports.updateSplColor = async (req, res, next) => {
       SplColorCodeIDPrKey: idStr,
     });
 
-    return sendResponse(res, "Special color updated successfully.", null, updatedRecord);
+    return sendResponse(res, "Special color updated successfully.", null, withImageUrl(updatedRecord));
   } catch (error) {
     console.error("updateSplColor error:", error);
     next(error);
