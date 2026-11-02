@@ -249,6 +249,9 @@ exports.addSplColor = async (req, res, next) => {
       EnColorName,
       ArColorName,
       SplColorImageName,
+      // ✅ NEW: Year reference (tbllokyear.YearID) - only relevant when
+      // ColorKeyCode is "COLOR BY TREND", but accepted/saved as sent
+      YearID,
       IsDataStatus,
       CreatedBy,
       ModifyBy,
@@ -304,6 +307,8 @@ exports.addSplColor = async (req, res, next) => {
       EnColorName: String(EnColorName).trim(),
       ArColorName: String(ArColorName).trim(),
       SplColorImageName: cleanImageName(SplColorImageName),
+      // ✅ NEW: Year reference (empty string when not "COLOR BY TREND")
+      YearID: YearID ? String(YearID).trim() : "",
 
       createdAt: now,
       modifiedAt: now,
@@ -384,6 +389,8 @@ exports.updateSplColor = async (req, res, next) => {
       EnColorName,
       ArColorName,
       SplColorImageName,
+      // ✅ NEW: Year reference (tbllokyear.YearID)
+      YearID,
       IsDataStatus,
       ModifyBy,
     } = req.body || {};
@@ -423,6 +430,10 @@ exports.updateSplColor = async (req, res, next) => {
     // (it always sends it - either the existing name unchanged, a new name
     // after a fresh upload, or "" after "Remove image").
     if (SplColorImageName !== undefined) setDoc.SplColorImageName = cleanImageName(SplColorImageName);
+    // Year reference is optional: only overwritten when the client sends the
+    // field (new.js/modify.js always send it - either the selected YearID
+    // when ColorKeyCode is "COLOR BY TREND", or "" otherwise).
+    if (YearID !== undefined) setDoc.YearID = YearID ? String(YearID).trim() : "";
     if (IsDataStatus !== undefined) setDoc.IsDataStatus = Number(IsDataStatus);
 
     const duplicateFilter = {
