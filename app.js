@@ -39,6 +39,7 @@ var BannerRoute = require('./controllers/banner/banner.route');
 var MainMenuRoute = require('./controllers/admin/mainmenu/mainmenu.route');
 var SubMenuRoute = require('./controllers/admin/submenu/submenu.route');
 var adminemailRoute = require('./controllers/admin/adminemail/adminemail.route');
+var TrendingInfoRoute = require('./controllers/admin/trendinginfo/trendinginfo.route');
 
 /* ✅ SETTINGS ROUTE */
 var SettingRoute = require('./controllers/setting/setting.route');
@@ -51,6 +52,7 @@ var SubPrdColorRoute = require('./controllers/lookupdata/productcolor/sub/subprd
 
 //Trend
 var trendcolorRoute = require('./controllers/trendcolor/trend.route');
+var trendingRoute = require('./controllers/trending/trending.route');
 
 // App Product Color
 var AppPrdColor = require('./controllers/app/prdcolor/prdcolor.route');
@@ -111,6 +113,7 @@ app.use('/api/banner', BannerRoute);
 app.use('/api/mainmenu', MainMenuRoute);
 app.use('/api/submenu', SubMenuRoute);
 app.use('/api/adminemail', adminemailRoute);
+app.use('/api/admin/trendinginfo', TrendingInfoRoute);
 
 app.use('/api/lookupdata/city', CityRoute);
 app.use('/api/lookupdata/sgyear', YearRoute);
@@ -127,6 +130,7 @@ app.use('/api/lookupdata/splprdcategory', Splprdcategory);
 /* ✅ LOOKUPDATA PRODUCT COLOR */
 
 app.use('/api/trendcolor', trendcolorRoute);
+app.use('/api/trending', trendingRoute);
 app.use('/api/lookupdata/productcolor/main', MainPrdColorRoute);
 app.use('/api/lookupdata/productcolor/sub', SubPrdColorRoute);
 
