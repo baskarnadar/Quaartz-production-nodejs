@@ -153,7 +153,7 @@ exports.createUser = async (req, res, next) => {
 
     console.log('Login user found:', user.UserID);
 
-    const token = jwt.sign({ userId: user.UserID }, SECRET, { expiresIn: '1d' });
+    const token = jwt.sign({ userId: user.UserID }, SECRET, { expiresIn: '365d' });
 
     const userWithToken = {
       ...user,
