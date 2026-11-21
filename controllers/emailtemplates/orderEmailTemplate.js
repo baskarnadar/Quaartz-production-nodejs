@@ -9,7 +9,8 @@
 //   UserOrderNo, OrderRefNo, DeliveryType, StoreName, StoreAddress,
 //   Items: [{ Name, ColorCode, HexValue, SizeName, Qty, Amount, LineTotal }],
 //     ColorCode = tblPrdSpecialColor.SplColorCodeID (never a colour NAME)
-//   OrderTotal, PlacedAt
+//   OrderTotal (VAT-exclusive subtotal), VatRate, VatAmount, GrandTotal,
+//   PlacedAt
 // }
 
 const LOGO_URL =
@@ -20,6 +21,9 @@ const APP_NAME = process.env.APP_NAME || "Sigma Paints";
 const APP_URL = process.env.APP_URL || "https://sigmapaints.com";
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "support@sigmapaints.com";
 const CURRENCY = process.env.CURRENCY || "SAR";
+// Fallback only - the real rate always comes from ctx.VatRate (see
+// config/appConfig.js), which is what checkout.controller.js actually uses.
+const DEFAULT_VAT_RATE = Number(process.env.VAT_RATE || 0.15);
 
 const BRAND = {
   blue: "#00529B",
@@ -124,7 +128,31 @@ function itemRows(items) {
     .join("");
 }
 
-function itemsTable(items, orderTotal) {
+// summaryRow() renders one line of the Subtotal / VAT / Total with VAT
+// breakdown beneath the item list. `grand` bumps up the size/weight for the
+// final "Total with VAT" row, matching the customer app's order summary.
+function summaryRow(label, value, { grand = false } = {}) {
+  return `
+    <tr>
+      <td colspan="2" style="padding:${grand ? "10px" : "4px"} 10px 0 0;"></td>
+      <td align="center" style="padding:${grand ? "10px" : "4px"} 10px 0 10px;font-family:'Segoe UI',Arial,Helvetica,sans-serif;
+                 font-size:${grand ? "13px" : "12px"};font-weight:${grand ? "700" : "600"};color:${grand ? BRAND.ink : BRAND.muted};
+                 text-transform:uppercase;letter-spacing:1px;${grand ? `border-top:1px solid ${BRAND.line};` : ""}">${escapeHtml(
+    label
+  )}</td>
+      <td align="right" style="padding:${grand ? "10px" : "4px"} 0 0 10px;font-family:'Segoe UI',Arial,Helvetica,sans-serif;
+                 font-size:${grand ? "18px" : "14px"};font-weight:${grand ? "800" : "600"};color:${grand ? BRAND.blue : BRAND.ink};
+                 white-space:nowrap;${grand ? `border-top:1px solid ${BRAND.line};` : ""}">${escapeHtml(money(value))}</td>
+    </tr>`;
+}
+
+function itemsTable(items, { subtotal = 0, vatRate = DEFAULT_VAT_RATE, vatAmount, grandTotal }) {
+  // Fall back to deriving VAT/total from subtotal + rate if the caller
+  // didn't pass pre-computed values, so this never silently shows 0.
+  const vat = vatAmount != null ? vatAmount : subtotal * vatRate;
+  const total = grandTotal != null ? grandTotal : subtotal + vat;
+  const ratePct = Math.round(vatRate * 100);
+
   return `
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
     <tr>
@@ -142,13 +170,9 @@ function itemsTable(items, orderTotal) {
                  border-bottom:2px solid ${BRAND.line};">Total</td>
     </tr>
     ${itemRows(items)}
-    <tr>
-      <td colspan="2" style="padding:16px 10px 0 0;"></td>
-      <td align="center" style="padding:16px 10px 0 10px;font-family:'Segoe UI',Arial,Helvetica,sans-serif;
-                 font-size:13px;font-weight:700;color:${BRAND.ink};text-transform:uppercase;letter-spacing:1px;">Total</td>
-      <td align="right" style="padding:16px 0 0 10px;font-family:'Segoe UI',Arial,Helvetica,sans-serif;
-                 font-size:18px;font-weight:800;color:${BRAND.blue};white-space:nowrap;">${escapeHtml(money(orderTotal))}</td>
-    </tr>
+    ${summaryRow("Total", subtotal)}
+    ${summaryRow(`VAT Portion (${ratePct}%)`, vat)}
+    ${summaryRow("Total with VAT", total, { grand: true })}
   </table>`;
 }
 
@@ -296,6 +320,9 @@ function customerOrderTemplate(ctx = {}) {
     StoreCity,
     Items = [],
     OrderTotal = 0,
+    VatRate = DEFAULT_VAT_RATE,
+    VatAmount,
+    GrandTotal,
     PlacedAt,
   } = ctx;
 
@@ -319,7 +346,12 @@ function customerOrderTemplate(ctx = {}) {
                     text-transform:uppercase;font-weight:700;color:${BRAND.muted};margin-bottom:12px;">
           Your items
         </div>
-        ${itemsTable(Items, OrderTotal)}
+        ${itemsTable(Items, {
+          subtotal: OrderTotal,
+          vatRate: VatRate,
+          vatAmount: VatAmount,
+          grandTotal: GrandTotal,
+        })}
       </td>
     </tr>
 
@@ -368,6 +400,12 @@ function customerOrderTemplate(ctx = {}) {
     plainItems(Items),
     ``,
     `Total: ${money(OrderTotal)}`,
+    `VAT Portion (${Math.round(VatRate * 100)}%): ${money(
+      VatAmount != null ? VatAmount : OrderTotal * VatRate
+    )}`,
+    `Total with VAT: ${money(
+      GrandTotal != null ? GrandTotal : OrderTotal + (VatAmount != null ? VatAmount : OrderTotal * VatRate)
+    )}`,
     DeliveryType ? `Method: ${DeliveryType}` : "",
     StoreName ? `Store: ${StoreName}` : "",
     StoreCity ? `City: ${StoreCity}` : "",
@@ -408,6 +446,9 @@ function adminOrderTemplate(ctx = {}) {
     StoreCity,
     Items = [],
     OrderTotal = 0,
+    VatRate = DEFAULT_VAT_RATE,
+    VatAmount,
+    GrandTotal,
     PlacedAt,
   } = ctx;
 
@@ -456,7 +497,12 @@ function adminOrderTemplate(ctx = {}) {
                     text-transform:uppercase;font-weight:700;color:${BRAND.muted};margin-bottom:12px;">
           Ordered items
         </div>
-        ${itemsTable(Items, OrderTotal)}
+        ${itemsTable(Items, {
+          subtotal: OrderTotal,
+          vatRate: VatRate,
+          vatAmount: VatAmount,
+          grandTotal: GrandTotal,
+        })}
       </td>
     </tr>
 
@@ -500,6 +546,12 @@ function adminOrderTemplate(ctx = {}) {
     plainItems(Items),
     ``,
     `Total: ${money(OrderTotal)}`,
+    `VAT Portion (${Math.round(VatRate * 100)}%): ${money(
+      VatAmount != null ? VatAmount : OrderTotal * VatRate
+    )}`,
+    `Total with VAT: ${money(
+      GrandTotal != null ? GrandTotal : OrderTotal + (VatAmount != null ? VatAmount : OrderTotal * VatRate)
+    )}`,
     DeliveryType ? `Method: ${DeliveryType}` : "",
     StoreName ? `Store: ${StoreName}` : "",
     StoreCity ? `City: ${StoreCity}` : "",

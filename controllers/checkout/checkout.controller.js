@@ -1,5 +1,6 @@
 const { connectToMongoDB } = require("../../database/mongodb");
 const { getAdminEmails, sendOrderEmails } = require('../services/emailservice');
+const { VAT_RATE } = require('../../config/appConfig');
 require('dotenv').config();
 
 // Helper function to send responses
@@ -271,6 +272,8 @@ async function buildOrderEmailContext(db, args) {
     const lineTotal = qty * amount;
 
     orderTotal += lineTotal;
+    // NOTE: ProductAmount / lineTotal are VAT-exclusive prices. VAT is
+    // applied once, on the order subtotal, below - never per line.
 
     // Colour is identified by its CODE only - never by EnColorName /
     // ArColorName. tblPrdSpecialColor.SplColorCodeID is the value to use;
@@ -292,6 +295,11 @@ async function buildOrderEmailContext(db, args) {
     };
   });
 
+  // VAT is calculated once on the VAT-exclusive subtotal, using the shared
+  // VAT_RATE config (never hardcoded here).
+  const vatAmount = orderTotal * VAT_RATE;
+  const grandTotal = orderTotal + vatAmount;
+
   return {
     CustomerName: user.RegFullName || "",
     CustomerEmail: user.RegEmailAddress || "",
@@ -308,7 +316,13 @@ async function buildOrderEmailContext(db, args) {
     PickUpCityID: PickUpCityIDVal || "",
 
     Items,
+    // OrderTotal kept as the VAT-exclusive subtotal for backward
+    // compatibility; VatRate/VatAmount/GrandTotal are the new VAT fields
+    // the email template uses to render the Subtotal / VAT / Total rows.
     OrderTotal: orderTotal,
+    VatRate: VAT_RATE,
+    VatAmount: vatAmount,
+    GrandTotal: grandTotal,
     PlacedAt: new Date().toLocaleString("en-GB", {
       day: "2-digit",
       month: "short",
