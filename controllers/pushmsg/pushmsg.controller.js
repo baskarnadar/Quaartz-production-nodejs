@@ -242,6 +242,8 @@ function sendResponse(res, message, error, results) {
 //   TokenOwnerID / DeviceIP  -> public IP the app reported (kept for history)
 // =====================================================================
 
+const { normalizePlatform } = require("../services/platform");
+
 const REG_FIELDS = [
   "RegUserID",
   "RegFullName",
@@ -297,7 +299,7 @@ exports.saveToken = async (req, res, next) => {
   const TokenID = clean(req.body?.TokenID || req.body?.token);
   const TokenOwnerID = clean(req.body?.TokenOwnerID);
   const OldTokenID = clean(req.body?.OldTokenID);
-  const DevicePlatform = clean(req.body?.DevicePlatform);
+  const DevicePlatform = req.body?.DevicePlatform ? normalizePlatform(req.body.DevicePlatform) : "";
   const CreatedBy = clean(req.body?.CreatedBy) || TokenOwnerID || "SYSTEM";
 
   if (!TokenID) {
@@ -408,7 +410,7 @@ exports.linkTokenToUser = async (req, res, next) => {
 
   const TokenID = clean(req.body?.TokenID || req.body?.token);
   const TokenOwnerID = clean(req.body?.TokenOwnerID);
-  const DevicePlatform = clean(req.body?.DevicePlatform);
+  const DevicePlatform = req.body?.DevicePlatform ? normalizePlatform(req.body.DevicePlatform) : "";
   const jwtUserID = clean(req.user?.prtuserid || req.user?.sub);
   const bodyUserID = clean(req.body?.RegUserID);
 
@@ -462,6 +464,13 @@ exports.linkTokenToUser = async (req, res, next) => {
       { $set, $setOnInsert: { TID: uuidv4(), CreatedBy: jwtUserID, CreatedDate: now } },
       { upsert: true }
     );
+
+    // users who registered before the app sent its platform: fill it now
+    if (DevicePlatform && !user.RegPlatform) {
+      await db
+        .collection("tblreginfo")
+        .updateOne({ RegUserID: jwtUserID }, { $set: { RegPlatform: DevicePlatform } });
+    }
 
     return sendResponse(res, "Token linked to registered user.", null, {
       TokenID,

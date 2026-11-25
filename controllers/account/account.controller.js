@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const transporter = require('../email/mail');
 const { resolveCountryCity } = require('../services/location');
 const { readAppDisplaySetting } = require('../setting/setting.controller');
+const { normalizePlatform } = require('../services/platform');
 require('dotenv').config();
 // Helper function to send responses
 function sendResponse(res, message, error, results) {
@@ -311,6 +312,11 @@ exports.regaccount = async (req, res, next) => {
     delete bodyCopy.CountryID;
     delete bodyCopy.CityID;
     delete bodyCopy.FCMToken;
+    delete bodyCopy.RegDevicePlatform;
+    delete bodyCopy.DevicePlatform;
+
+    // NEW: device the user registered from (ANDROID / IOS / WEB / OTHER)
+    const RegPlatform = normalizePlatform(req.body.RegDevicePlatform || req.body.DevicePlatform);
 
     const updatedData = {
       ...bodyCopy,
@@ -321,6 +327,7 @@ exports.regaccount = async (req, res, next) => {
       RegCityName: "",
       RegArCityName: "",
       ...location.fields,
+      RegPlatform,
       createdBy: "",
       createdAt: new Date(),
       modifiedBy: "",

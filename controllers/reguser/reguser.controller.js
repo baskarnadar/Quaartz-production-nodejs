@@ -32,6 +32,7 @@ const USER_PROJECTION = {
   RegCityID: 1,
   RegCityName: 1,
   RegArCityName: 1,
+  RegPlatform: 1,
   createdAt: 1,
   modifiedAt: 1,
 };
@@ -52,6 +53,14 @@ function buildFilter(src = {}) {
 
   const CityID = clean(src.CityID);
   if (CityID) and.push({ RegCityID: CityID });
+
+  // ANDROID | IOS | WEB | NONE (old users, platform unknown)
+  const Platform = clean(src.Platform).toUpperCase();
+  if (Platform === "NONE") {
+    and.push({ $or: [{ RegPlatform: { $exists: false } }, { RegPlatform: "" }, { RegPlatform: null }] });
+  } else if (Platform) {
+    and.push({ RegPlatform: Platform });
+  }
 
   const search = clean(src.search || src.searchTerm);
   if (search) {
@@ -134,17 +143,43 @@ exports.list = async (req, res, next) => {
             OrderCount: { $size: "$orders" },
           },
         },
+        {
+          // platforms of the user's app devices (ANDROID / IOS / WEB)
+          $addFields: {
+            DevicePlatforms: {
+              $setDifference: [
+                {
+                  $map: {
+                    input: "$devices",
+                    as: "d",
+                    in: { $toUpper: { $ifNull: ["$$d.DevicePlatform", ""] } },
+                  },
+                },
+                [""],
+              ],
+            },
+          },
+        },
         { $project: { devices: 0, orders: 0 } },
       ])
       .toArray();
 
-    const [totalCount, all, active, withCountry, withDevice] = await Promise.all([
+    const [totalCount, all, active, withCountry, withDevice, byPlatformRaw] = await Promise.all([
       collection.countDocuments(filter),
       collection.countDocuments({}),
       collection.countDocuments({ RegStatus: "ACTIVE" }),
       collection.countDocuments({ RegCountryID: { $nin: [null, ""], $exists: true } }),
       db.collection("tblpushtoken").distinct("RegUserID", { IsRegistered: "YES", IsActive: { $ne: "NO" } }),
+      collection
+        .aggregate([{ $group: { _id: { $ifNull: ["$RegPlatform", ""] }, n: { $sum: 1 } } }])
+        .toArray(),
     ]);
+
+    const byPlatform = { ANDROID: 0, IOS: 0, WEB: 0, OTHER: 0, UNKNOWN: 0 };
+    byPlatformRaw.forEach((r) => {
+      const k = r._id || "UNKNOWN";
+      byPlatform[k in byPlatform ? k : "OTHER"] += r.n;
+    });
 
     return sendResponse(
       res,
@@ -162,6 +197,7 @@ exports.list = async (req, res, next) => {
           notActive: all - active,
           withCountry,
           withDevice: withDevice.filter(Boolean).length,
+          byPlatform,
         },
       },
       totalCount

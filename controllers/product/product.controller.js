@@ -189,6 +189,7 @@ exports.getProductSpec = async (req, res, next) => {
     // =========================================================
     const ProductID = String(req.body?.ProductID || "").trim();
     const PrdSpecDesc = String(req.body?.PrdSpecDesc || "").trim();
+    const ArPrdSpecDesc = String(req.body?.ArPrdSpecDesc || "").trim(); // NEW: Arabic specification
 
     if (!ProductID) {
       return sendResponse(
@@ -200,10 +201,10 @@ exports.getProductSpec = async (req, res, next) => {
       );
     }
 
-    if (!PrdSpecDesc) {
+    if (!PrdSpecDesc && !ArPrdSpecDesc) {
       return sendResponse(
         res,
-        "Product specification description is required.",
+        "Enter the product specification in English or Arabic.",
         true,
         null,
         null
@@ -238,6 +239,7 @@ exports.getProductSpec = async (req, res, next) => {
         {
           $set: {
             PrdSpecDesc: PrdSpecDesc,
+            ArPrdSpecDesc: ArPrdSpecDesc,
             UpdatedDate: new Date(),
           },
         }
@@ -250,6 +252,7 @@ exports.getProductSpec = async (req, res, next) => {
         {
           ProductID: ProductID,
           PrdSpecDesc: PrdSpecDesc,
+          ArPrdSpecDesc: ArPrdSpecDesc,
           matchedCount: updateResult.matchedCount,
           modifiedCount: updateResult.modifiedCount,
         },
@@ -263,6 +266,7 @@ exports.getProductSpec = async (req, res, next) => {
     const productSpecItem = {
       ProductID: ProductID,
       PrdSpecDesc: PrdSpecDesc,
+      ArPrdSpecDesc: ArPrdSpecDesc,
       CreatedDate: new Date(),
       UpdatedDate: new Date(),
     };
