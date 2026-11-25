@@ -36,6 +36,8 @@ router.post("/getProductSize", protectAPI, product.getProductSize);
 router.post("/createProductSize", protectAPI, product.createProductSize);
 router.post("/updateProductID", protectAPI, product.updateProductID);
 router.post("/delproductByID", protectAPI, product.delproductByID);
+router.post("/deletedProductList", protectAPI, product.deletedProductList); // _delete_tblproductinfo
+router.post("/restoreProduct", protectAPI, product.restoreProduct);         // put a deleted product back
 
 router.post("/addproductimage", protectAPI, product.addproductimage);
 router.post("/delproductimage", protectAPI, product.delproductimage);

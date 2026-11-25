@@ -901,6 +901,8 @@ exports.Oldgetcategoryproductlist = async (req, res, next) => {
 };
  
  
+const DELETED_PRODUCTS = "_delete_tblproductinfo";
+
 // ---------------------------------------------------------------------
 // POST /api/product/delproductByID   body: { ProductID }
 // A product that appears in any order cannot be deleted.
@@ -940,8 +942,24 @@ exports.delproductByID = async (req, res, next) => {
       });
     }
 
-    // Proceed with deletion (product + its colours, sizes, specification,
-    // and any not-yet-ordered cart rows that point to it)
+    // ---- soft delete: keep everything in _delete_tblproductinfo ----
+    const [colors, sizes, specs, cartRows] = await Promise.all([
+      db.collection("tblProductColor").find({ ProductID }).toArray(),
+      db.collection("tblProductSize").find({ ProductID }).toArray(),
+      db.collection("tblProductSpec").find({ ProductID }).toArray(),
+      db.collection("tblcart").find({ ProductID }).toArray(),
+    ]);
+
+    await db.collection(DELETED_PRODUCTS).insertOne({
+      ...product, // same _id and every field
+      _DeletedAt: new Date(),
+      _DeletedBy: String(req.user?.prtuserid || req.user?.sub || "ADMIN"),
+      _tblProductColor: colors,
+      _tblProductSize: sizes,
+      _tblProductSpec: specs,
+      _tblcart: cartRows, // kept for reference only, not restored
+    });
+
     const [delPrd] = await Promise.all([
       db.collection("tblProduct").deleteOne({ ProductID }),
       db.collection("tblProductColor").deleteMany({ ProductID }),
@@ -952,13 +970,141 @@ exports.delproductByID = async (req, res, next) => {
 
     return res.status(200).json({
       statusCode: 200,
-      message: "Product deleted successfully",
+      message: "Product deleted. You can restore it from Deleted Products.",
       data: { ProductID, deletedCount: delPrd.deletedCount },
       error: null,
     });
   } catch (error) {
     console.error("Error in delproductByID:", error);
     return res.status(500).json({ statusCode: 500, message: "Internal Server Error", data: null, error: error.message });
+  }
+};
+
+// ---------------------------------------------------------------------
+// POST /api/product/deletedProductList   body: { search? }   (CMS)
+// ---------------------------------------------------------------------
+exports.deletedProductList = async (req, res, next) => {
+  try {
+    const search = String(req.body?.search || "").trim();
+    const filter = {};
+    if (search) {
+      const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      filter.$or = [{ PrdName: rx }, { ArPrdName: rx }, { PrdCodeNo: rx }];
+    }
+
+    const db = await connectToMongoDB();
+    const rows = await db
+      .collection(DELETED_PRODUCTS)
+      .aggregate([
+        { $match: filter },
+        { $sort: { _DeletedAt: -1 } },
+        { $limit: 1000 },
+        {
+          $lookup: {
+            from: "tblProductCategory",
+            localField: "CategoryID",
+            foreignField: "CategoryID",
+            as: "category",
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            ProductID: 1,
+            PrdCodeNo: 1,
+            PrdName: 1,
+            ArPrdName: 1,
+            PrdThumb: 1,
+            CategoryID: 1,
+            _DeletedAt: 1,
+            _DeletedBy: 1,
+            EnCategoryName: { $ifNull: [{ $arrayElemAt: ["$category.EnCategoryName", 0] }, ""] },
+            ArCategoryName: { $ifNull: [{ $arrayElemAt: ["$category.ArCategoryName", 0] }, ""] },
+            ColorCount: { $size: { $ifNull: ["$_tblProductColor", []] } },
+            SizeCount: { $size: { $ifNull: ["$_tblProductSize", []] } },
+          },
+        },
+      ])
+      .toArray();
+
+    const imageURL = process.env.IMAGEURL + "product/images/";
+    rows.forEach((r) => {
+      r.ProductImageUrl = r.PrdThumb ? imageURL + r.PrdThumb : "";
+    });
+
+    const total = await db.collection(DELETED_PRODUCTS).countDocuments({});
+    return res.status(200).json({ statusCode: 200, message: "Deleted products found.", data: { rows, total }, error: null });
+  } catch (error) {
+    console.error("Error in deletedProductList:", error);
+    next(error);
+  }
+};
+
+// ---------------------------------------------------------------------
+// POST /api/product/restoreProduct   body: { ProductID }   (CMS)
+// Puts the product back exactly as it was, with its colours, sizes and
+// specification. Blocked if the product code is now used by another product.
+// ---------------------------------------------------------------------
+exports.restoreProduct = async (req, res, next) => {
+  try {
+    const ProductID = String(req.body?.ProductID || "").trim();
+    if (!ProductID) {
+      return res.status(400).json({ statusCode: 400, message: "ProductID is required", data: null, error: "validation_error" });
+    }
+
+    const db = await connectToMongoDB();
+    const doc = await db.collection(DELETED_PRODUCTS).findOne({ ProductID });
+    if (!doc) {
+      return res.status(404).json({ statusCode: 404, message: "Deleted product not found", data: null, error: "not_found" });
+    }
+
+    const live = db.collection("tblProduct");
+    if (await live.findOne({ ProductID })) {
+      return res.status(400).json({ statusCode: 400, message: "This product already exists.", data: null, error: "exists" });
+    }
+    if (doc.PrdCodeNo) {
+      const clash = await live.findOne({ PrdCodeNo: doc.PrdCodeNo });
+      if (clash) {
+        return res.status(400).json({
+          statusCode: 400,
+          message: `Cannot restore: product code ${doc.PrdCodeNo} is now used by "${clash.PrdName || clash.ProductID}".`,
+          data: null,
+          error: "conflict",
+        });
+      }
+    }
+
+    const { _DeletedAt, _DeletedBy, _tblProductColor, _tblProductSize, _tblProductSpec, _tblcart, ...original } = doc;
+
+    let categoryWarning = "";
+    if (original.CategoryID) {
+      const cat = await db.collection("tblProductCategory").findOne({ CategoryID: original.CategoryID });
+      if (!cat) categoryWarning = " Note: its category no longer exists, so choose a new category for it.";
+    }
+
+    await live.insertOne(original);
+
+    const putBack = async (name, rows) => {
+      if (!Array.isArray(rows) || !rows.length) return;
+      for (const r of rows) {
+        await db.collection(name).updateOne({ _id: r._id }, { $setOnInsert: r }, { upsert: true });
+      }
+    };
+    await putBack("tblProductColor", _tblProductColor);
+    await putBack("tblProductSize", _tblProductSize);
+    await putBack("tblProductSpec", _tblProductSpec);
+
+    await db.collection(DELETED_PRODUCTS).deleteOne({ ProductID });
+
+    return res.status(200).json({
+      statusCode: 200,
+      message: "Product restored." + categoryWarning,
+      data: { ProductID },
+      error: null,
+    });
+  } catch (error) {
+    console.error("Error in restoreProduct:", error);
+    next(error);
   }
 };
 
