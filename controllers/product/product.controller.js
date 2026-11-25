@@ -573,7 +573,18 @@ exports.createProductColor = async (req, res, next) => {
       },
       { $sort: { createdAt: -1 } }, // Order by createdAt DESC
       { $skip: skip },
-      { $limit: parseInt(limit) }
+      { $limit: parseInt(limit) },
+      // NEW: how many order lines use this product (CMS blocks delete when > 0)
+      {
+        $lookup: {
+          from: "tblorderdetails",
+          localField: "ProductID",
+          foreignField: "ProductID",
+          as: "_orderLines"
+        }
+      },
+      { $addFields: { InOrderCount: { $size: "$_orderLines" } } },
+      { $project: { _orderLines: 0 } }
     ]).toArray();
 
     // Image URL building
@@ -890,35 +901,66 @@ exports.Oldgetcategoryproductlist = async (req, res, next) => {
 };
  
  
+// ---------------------------------------------------------------------
+// POST /api/product/delproductByID   body: { ProductID }
+// A product that appears in any order cannot be deleted.
+// (Fixed: the old check looked in "tblOrderDetails" but the collection is
+//  "tblorderdetails", so it never found anything, and the "blocked" reply was
+//  sent with status 200 so the CMS showed "deleted".)
+// ---------------------------------------------------------------------
 exports.delproductByID = async (req, res, next) => {
-  const { ProductID } = req.body;
+  const ProductID = String(req.body?.ProductID || "").trim();
 
   if (!ProductID) {
-    return sendResponse(res, "ProductID is required", null, null, 400);
+    return res.status(400).json({ statusCode: 400, message: "ProductID is required", data: null, error: "validation_error" });
   }
 
   try {
     const db = await connectToMongoDB();
 
-    const orderDetailExists = await db.collection('tblOrderDetails').findOne({ ProductID });
-
-    if (orderDetailExists) {
-      return sendResponse(res, "Product cannot be deleted. It exists in order details.", null, null, 400);
+    const product = await db.collection("tblProduct").findOne({ ProductID });
+    if (!product) {
+      return res.status(404).json({ statusCode: 404, message: "Product not found", data: null, error: "not_found" });
     }
 
-    // Proceed with deletion
-    await db.collection('tblProduct').deleteOne({ ProductID });
-    await db.collection('tblProductColor').deleteMany({ ProductID });
-    await db.collection('tblProductSize').deleteMany({ ProductID });
+    // check both spellings in case an old collection still exists
+    const [inOrders, inOrdersLegacy] = await Promise.all([
+      db.collection("tblorderdetails").countDocuments({ ProductID }),
+      db.collection("tblOrderDetails").countDocuments({ ProductID }),
+    ]);
+    const orderLines = inOrders + inOrdersLegacy;
 
-    return sendResponse(res, "Product deleted successfully", null, null, 200);
+    if (orderLines > 0) {
+      const orderRefs = await db.collection("tblorderdetails").distinct("OrderRefNo", { ProductID });
+      return res.status(400).json({
+        statusCode: 400,
+        message: `This product cannot be deleted. It is used in ${orderRefs.length || orderLines} order(s).`,
+        data: { orderLines, orderCount: orderRefs.length },
+        error: "in_orders",
+      });
+    }
+
+    // Proceed with deletion (product + its colours, sizes, specification,
+    // and any not-yet-ordered cart rows that point to it)
+    const [delPrd] = await Promise.all([
+      db.collection("tblProduct").deleteOne({ ProductID }),
+      db.collection("tblProductColor").deleteMany({ ProductID }),
+      db.collection("tblProductSize").deleteMany({ ProductID }),
+      db.collection("tblProductSpec").deleteMany({ ProductID }),
+      db.collection("tblcart").deleteMany({ ProductID }),
+    ]);
+
+    return res.status(200).json({
+      statusCode: 200,
+      message: "Product deleted successfully",
+      data: { ProductID, deletedCount: delPrd.deletedCount },
+      error: null,
+    });
   } catch (error) {
     console.error("Error in delproductByID:", error);
-    return sendResponse(res, "Internal Server Error", null, error.message, 500);
+    return res.status(500).json({ statusCode: 500, message: "Internal Server Error", data: null, error: error.message });
   }
 };
-
-
 
 exports.delproductimage = async (req, res, next) => {
   try {
