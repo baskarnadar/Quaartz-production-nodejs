@@ -11,6 +11,8 @@ router.get("/getProduct", Common.getProduct);
 router.get("/getColor", Common.getColor);  
 router.post("/addCity", Common.addCity);
 router.post("/getCity", Common.getCity);
+router.post("/getCountry", Common.getCountry);              // app: registration country dropdown
+router.post("/getCityByCountry", Common.getCityByCountry);  // app: registration city dropdown
 router.post("/getstoreInfoByCityID", Common.getstoreInfoByCityID);
 router.post("/menulist", Common.menulist);
 router.post("/getadminemails", Common.getadminemails);

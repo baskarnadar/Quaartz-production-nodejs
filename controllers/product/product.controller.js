@@ -12,6 +12,149 @@ function sendResponse(res, message, error, results,totalCount) {
 }
 
 
+const { readAppDisplaySetting } = require("../setting/setting.controller");
+
+// ---------------------------------------------------------------------
+// Product Description / Specification visibility
+// Per product:  tblProduct.IsShowPrdDesc / IsShowPrdSpec  ("YES" | "NO", missing = "YES")
+// Global:       tblappsetting.ShowPrdDesc / ShowPrdSpec
+// The app shows a section only when BOTH are "YES".
+// ---------------------------------------------------------------------
+const yesNo = (v, fallback = "YES") => {
+  if (v === undefined || v === null || v === "") return fallback;
+  const s = String(v).trim().toUpperCase();
+  return s === "YES" || s === "1" || s === "TRUE" ? "YES" : "NO";
+};
+
+function applyVisibility(product, appSetting) {
+  product.IsShowPrdDesc = yesNo(product.IsShowPrdDesc);
+  product.IsShowPrdSpec = yesNo(product.IsShowPrdSpec);
+  product.ShowPrdDesc =
+    appSetting.ShowPrdDesc === "YES" && product.IsShowPrdDesc === "YES" ? "YES" : "NO";
+  product.ShowPrdSpec =
+    appSetting.ShowPrdSpec === "YES" && product.IsShowPrdSpec === "YES" ? "YES" : "NO";
+  return product;
+}
+
+// ---------------------------------------------------------------------
+// POST /api/product/getProductDescription   (public: app + CMS)
+// body: { ProductID }
+// -> { ProductID, PrdName, ArPrdName, PrdDesc, PrdFullDesc, ArPrdFullDesc,
+//      IsShowPrdDesc, IsShowPrdSpec, ShowPrdDesc, ShowPrdSpec }
+// PrdFullDesc falls back to the short PrdDesc when no full description was entered.
+// ---------------------------------------------------------------------
+exports.getProductDescription = async (req, res, next) => {
+  try {
+    const ProductID = String(req.body?.ProductID || "").trim();
+    if (!ProductID) {
+      return sendResponse(res, "ProductID is required", true, null, null);
+    }
+
+    const db = await connectToMongoDB();
+    const product = await db.collection("tblProduct").findOne(
+      { ProductID },
+      {
+        projection: {
+          _id: 0,
+          ProductID: 1,
+          PrdName: 1,
+          ArPrdName: 1,
+          PrdDesc: 1,
+          PrdFullDesc: 1,
+          ArPrdFullDesc: 1,
+          IsShowPrdDesc: 1,
+          IsShowPrdSpec: 1,
+          PrdBanner: 1,
+        },
+      }
+    );
+
+    if (!product) {
+      return sendResponse(res, "No product found", true, null, null);
+    }
+
+    const appSetting = await readAppDisplaySetting(db);
+    applyVisibility(product, appSetting);
+
+    product.HasFullDesc = String(product.PrdFullDesc || "").trim() !== "" ? "YES" : "NO";
+    product.PrdFullDesc = String(product.PrdFullDesc || "").trim() || String(product.PrdDesc || "");
+    product.ArPrdFullDesc = String(product.ArPrdFullDesc || "").trim();
+    product.PrdBannerImageUrl = process.env.IMAGEURL + "product/banner/" + (product.PrdBanner || "");
+
+    return sendResponse(res, "Product description found.", null, product, null);
+  } catch (error) {
+    console.error("[getProductDescription] Error:", error);
+    next(error);
+  }
+};
+
+// ---------------------------------------------------------------------
+// POST /api/product/saveProductDescription   (CMS, protected)
+// body: { ProductID, PrdFullDesc, ArPrdFullDesc, IsShowPrdDesc, ModifyBy }
+// ---------------------------------------------------------------------
+exports.saveProductDescription = async (req, res, next) => {
+  try {
+    const ProductID = String(req.body?.ProductID || "").trim();
+    if (!ProductID) {
+      return sendResponse(res, "ProductID is required.", true, null, null);
+    }
+
+    const $set = {
+      PrdFullDesc: String(req.body?.PrdFullDesc ?? "").trim(),
+      ArPrdFullDesc: String(req.body?.ArPrdFullDesc ?? "").trim(),
+      modifyAt: new Date(),
+      updatedBy: req.body?.ModifyBy || "USER",
+    };
+    if (req.body?.IsShowPrdDesc !== undefined) {
+      $set.IsShowPrdDesc = yesNo(req.body.IsShowPrdDesc);
+    }
+
+    const db = await connectToMongoDB();
+    const result = await db.collection("tblProduct").updateOne({ ProductID }, { $set });
+
+    if (result.matchedCount === 0) {
+      return sendResponse(res, "No product found to update.", true, null, null);
+    }
+
+    return sendResponse(res, "Product description saved successfully.", null, { ProductID, ...$set }, null);
+  } catch (error) {
+    console.error("[saveProductDescription] Error:", error);
+    next(error);
+  }
+};
+
+// ---------------------------------------------------------------------
+// POST /api/product/updateProductVisibility   (CMS, protected)
+// body: { ProductID, IsShowPrdDesc?, IsShowPrdSpec? }
+// ---------------------------------------------------------------------
+exports.updateProductVisibility = async (req, res, next) => {
+  try {
+    const ProductID = String(req.body?.ProductID || "").trim();
+    if (!ProductID) {
+      return sendResponse(res, "ProductID is required.", true, null, null);
+    }
+
+    const $set = { modifyAt: new Date() };
+    if (req.body?.IsShowPrdDesc !== undefined) $set.IsShowPrdDesc = yesNo(req.body.IsShowPrdDesc);
+    if (req.body?.IsShowPrdSpec !== undefined) $set.IsShowPrdSpec = yesNo(req.body.IsShowPrdSpec);
+
+    if (!("IsShowPrdDesc" in $set) && !("IsShowPrdSpec" in $set)) {
+      return sendResponse(res, "Send IsShowPrdDesc and/or IsShowPrdSpec.", true, null, null);
+    }
+
+    const db = await connectToMongoDB();
+    const result = await db.collection("tblProduct").updateOne({ ProductID }, { $set });
+    if (result.matchedCount === 0) {
+      return sendResponse(res, "No product found to update.", true, null, null);
+    }
+
+    return sendResponse(res, "Product visibility updated.", null, { ProductID, ...$set }, null);
+  } catch (error) {
+    console.error("[updateProductVisibility] Error:", error);
+    next(error);
+  }
+};
+
 exports.getProductSpec = async (req, res, next) => {
   try {
     const ProductID = req.body.ProductID;
@@ -68,6 +211,14 @@ exports.getProductSpec = async (req, res, next) => {
     }
 
     const productSpecCollection = db.collection("tblProductSpec");
+
+    // optional show / hide flag sent from the CMS specification popup
+    if (req.body?.IsShowPrdSpec !== undefined) {
+      await db.collection("tblProduct").updateOne(
+        { ProductID: ProductID },
+        { $set: { IsShowPrdSpec: yesNo(req.body.IsShowPrdSpec), modifyAt: new Date() } }
+      );
+    }
 
     // =========================================================
     // Check whether ProductID already exists
@@ -250,6 +401,9 @@ exports.getProductSize = async (req, res, next) => {
     const BannerUrl = baseUrl + "banner/";
     const imageURL = baseUrl + "images/";
 
+    // Global show / hide switches (CMS > Settings > App Display Settings)
+    const appSetting = await readAppDisplaySetting(db);
+
     // Attach image URLs
     documents.forEach(product => {
       product.PrdGridListUrl = GridListUrl + product.PrdGridList;
@@ -257,6 +411,7 @@ exports.getProductSize = async (req, res, next) => {
       product.PrdLargeImageUrl = LargeUrl + product.PrdLarge;
       product.PrdBannerImageUrl = BannerUrl + product.PrdBanner;
       product.ProductImageUrl = imageURL + product.PrdThumb;
+      applyVisibility(product, appSetting);
     });
 
     // Return single product if found
@@ -398,6 +553,10 @@ exports.createProductColor = async (req, res, next) => {
           PrdBanner: 1,
           PrdGridList: 1,
           PrdDesc: 1,
+          PrdFullDesc: 1,
+          ArPrdFullDesc: 1,
+          IsShowPrdDesc: 1,
+          IsShowPrdSpec: 1,
           PrdAmount: 1,
           PrdColorCode: 1,
           modifyAt: 1,

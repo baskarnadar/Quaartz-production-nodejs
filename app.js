@@ -28,6 +28,7 @@ var CategoryRoute = require('./controllers/category/category.route');
 var DashBoardRoute = require('./controllers/dashboard/dashboard.route');
 var OfferRoute = require('./controllers/offer/offer.route');
 var CityRoute = require('./controllers/lookupdata/city/city.route');
+var CountryRoute = require('./controllers/lookupdata/country/country.route');
 var YearRoute = require('./controllers/lookupdata/sgyear/year.route');
 
 /* ✅ FIXED LOWERCASE ROUTES */
@@ -116,6 +117,7 @@ app.use('/api/adminemail', adminemailRoute);
 app.use('/api/admin/trendinginfo', TrendingInfoRoute);
 
 app.use('/api/lookupdata/city', CityRoute);
+app.use('/api/lookupdata/country', CountryRoute);
 app.use('/api/lookupdata/sgyear', YearRoute);
 
 /* ✅ APP PRODUCT COLOR */

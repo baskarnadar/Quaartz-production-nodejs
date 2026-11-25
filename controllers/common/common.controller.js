@@ -281,3 +281,77 @@ exports.getadminemails = async (req, res, next) => {
     next(error);
   }
 };
+
+// =====================================================================
+// COUNTRY / CITY FOR THE MOBILE APP (public, active records only)
+// =====================================================================
+// A record is active when IsDataStatus is "1" / 1 or was never set
+// (older tblcity rows have no IsDataStatus field).
+const ACTIVE_FILTER = {
+  $or: [
+    { IsDataStatus: { $exists: false } },
+    { IsDataStatus: null },
+    { IsDataStatus: "" },
+    { IsDataStatus: "1" },
+    { IsDataStatus: 1 },
+  ],
+};
+
+// POST /api/common/getCountry
+// -> [{ CountryID, EnCountryName, ArCountryName, CountryCode, PhoneCode }]
+exports.getCountry = async (req, res, next) => {
+  try {
+    const db = await connectToMongoDB();
+    const rows = await db
+      .collection("tblcountry")
+      .find(ACTIVE_FILTER, {
+        projection: {
+          _id: 0,
+          CountryID: 1,
+          EnCountryName: 1,
+          ArCountryName: 1,
+          CountryCode: 1,
+          PhoneCode: 1,
+          SortOrder: 1,
+        },
+      })
+      .sort({ SortOrder: 1, EnCountryName: 1 })
+      .toArray();
+    sendResponse(res, "Data fetched successfully .", null, rows);
+  } catch (error) {
+    console.log(error);
+    next(error);
+  }
+};
+
+// POST /api/common/getCityByCountry   body: { CountryID }
+// -> [{ CityID, EnCityName, ArCityName, CountryID }]
+exports.getCityByCountry = async (req, res, next) => {
+  try {
+    const CountryID = String(req.body?.CountryID || "").trim();
+    if (!CountryID) {
+      return sendResponse(res, "CountryID is required.", { type: "validation_error" }, []);
+    }
+
+    const db = await connectToMongoDB();
+    const rows = await db
+      .collection("tblcity")
+      .find(
+        { $and: [{ CountryID }, ACTIVE_FILTER] },
+        { projection: { _id: 0, CityID: 1, EnCityName: 1, ArCityName: 1, CountryID: 1 } }
+      )
+      .sort({ EnCityName: 1 })
+      .toArray();
+
+    // trim stray spaces that exist in some older city names
+    rows.forEach((r) => {
+      r.EnCityName = String(r.EnCityName || "").trim();
+      r.ArCityName = String(r.ArCityName || "").trim();
+    });
+
+    sendResponse(res, "Data fetched successfully .", null, rows);
+  } catch (error) {
+    console.log(error);
+    next(error);
+  }
+};

@@ -3,6 +3,8 @@ const EmailService = require('../services/emailservice');
 const { sendRegistrationOtpEmail } = require('../services/emailservice');
 const crypto = require("crypto");
 const transporter = require('../email/mail');
+const { resolveCountryCity } = require('../services/location');
+const { readAppDisplaySetting } = require('../setting/setting.controller');
 require('dotenv').config();
 // Helper function to send responses
 function sendResponse(res, message, error, results) {
@@ -61,11 +63,39 @@ exports.updateaccount = async (req, res, next) => {
       modifiedAt: new Date()
     };
 
+    // NEW: optional country / city change from the profile screen
+    const newCountryID = String(req.body.RegCountryID || req.body.CountryID || "").trim();
+    const newCityID = String(req.body.RegCityID || req.body.CityID || "").trim();
+    if (newCountryID || newCityID) {
+      const location = await resolveCountryCity(db, newCountryID, newCityID);
+      if (!location.ok) {
+        return res.status(400).json({
+          statusCode: 400,
+          message: location.message,
+          data: { status: 'INVALID-COUNTRY-CITY' },
+          error: 'ValidationError'
+        });
+      }
+      Object.assign(updatedData, location.fields);
+    }
+
     // Update the existing user document
     const updateResult = await db.collection('tblreginfo').updateOne(
       { RegUserID: RegUserIDVal },
       { $set: updatedData }
     );
+
+    // keep the push-token owner details in step with the profile
+    if (updateResult.matchedCount > 0) {
+      const tokenSet = {
+        RegFullName: RegFullNameNoVal,
+        RegEmailAddress: RegEmailAddressVal,
+        ModifyDate: new Date(),
+      };
+      ['RegCountryID', 'RegCountryName', 'RegArCountryName', 'RegCityID', 'RegCityName', 'RegArCityName']
+        .forEach((k) => { if (updatedData[k] !== undefined) tokenSet[k] = updatedData[k]; });
+      await db.collection('tblpushtoken').updateMany({ RegUserID: RegUserIDVal }, { $set: tokenSet });
+    }
 
     if (updateResult.modifiedCount === 0) {
       return res.status(404).json({
@@ -201,6 +231,10 @@ exports.regaccount = async (req, res, next) => {
   const RegPasswordVal = req.body.RegPassword;
   const RegFullNameVal = req.body.RegFullName;
 
+  // NEW: country + city from the registration form dropdowns
+  const RegCountryIDVal = String(req.body.RegCountryID || req.body.CountryID || "").trim();
+  const RegCityIDVal = String(req.body.RegCityID || req.body.CityID || "").trim();
+
   let pwdkey = "";
   const value = RegEmailAddressVal + RegPasswordVal;
   const md5Key = crypto.createHash("md5").update(value, "utf-8").digest();
@@ -238,8 +272,55 @@ exports.regaccount = async (req, res, next) => {
       });
     }
 
+    // -----------------------------------------------------------------
+    // Country / City (validated against tblcountry / tblcity)
+    // -----------------------------------------------------------------
+    const appSetting = await readAppDisplaySetting(db);
+    const countryCityRequired =
+      appSetting.ShowRegCountryCity === "YES" && appSetting.RegCountryCityRequired === "YES";
+
+    // Older app versions do not send country/city -> only enforce when the
+    // client sent at least one of them, so those users can still register.
+    const clientSentLocation = !!(RegCountryIDVal || RegCityIDVal);
+    let missingLocation = clientSentLocation && (!RegCountryIDVal || !RegCityIDVal);
+    if (missingLocation && RegCountryIDVal && !RegCityIDVal) {
+      // a country without any city cannot require a city
+      const cityCount = await db.collection("tblcity").countDocuments({ CountryID: RegCountryIDVal });
+      if (cityCount === 0) missingLocation = false;
+    }
+    if (countryCityRequired && missingLocation) {
+      return res.status(500).json({
+        statusCode: 500,
+        message: "Please select your country and city.",
+        data: { status: "COUNTRY-CITY-REQUIRED" },
+        error: "error",
+      });
+    }
+
+    const location = await resolveCountryCity(db, RegCountryIDVal, RegCityIDVal);
+    if (!location.ok) {
+      return res.status(500).json({
+        statusCode: 500,
+        message: location.message,
+        data: { status: "INVALID-COUNTRY-CITY" },
+        error: "error",
+      });
+    }
+
+    const bodyCopy = { ...req.body };
+    delete bodyCopy.CountryID;
+    delete bodyCopy.CityID;
+    delete bodyCopy.FCMToken;
+
     const updatedData = {
-      ...req.body,
+      ...bodyCopy,
+      RegCountryID: "",
+      RegCountryName: "",
+      RegArCountryName: "",
+      RegCityID: "",
+      RegCityName: "",
+      RegArCityName: "",
+      ...location.fields,
       createdBy: "",
       createdAt: new Date(),
       modifiedBy: "",
@@ -489,12 +570,24 @@ exports.deleteaccount = async (req, res, next) => {
     }
 
     // Perform deletions in parallel
-    const [reginfoDel, prtuserDel, orderDel, orderDetailsDel] =
+    const [reginfoDel, prtuserDel, orderDel, orderDetailsDel, tokenUnlink] =
       await Promise.all([
         db.collection('tblreginfo').deleteOne({ RegUserID: RegUserIDVal }),
         db.collection('tblprtuser').deleteMany({ UserID: RegUserIDVal }),
         db.collection('tblorder').deleteMany({ RegUserID: RegUserIDVal }),
         db.collection('tblorderdetails').deleteMany({ RegUserID: RegUserIDVal }),
+        // the device stays, but it is no longer a registered user's device
+        db.collection('tblpushtoken').updateMany(
+          { RegUserID: RegUserIDVal },
+          {
+            $set: { IsRegistered: 'NO', OwnerType: 'Anonymous', ModifyDate: new Date() },
+            $unset: {
+              RegUserID: '', RegFullName: '', RegEmailAddress: '', RegMobileNo: '',
+              RegCountryID: '', RegCountryName: '', RegArCountryName: '',
+              RegCityID: '', RegCityName: '', RegArCityName: '', RegisteredAt: '',
+            },
+          }
+        ),
       ]);
 
     if (reginfoDel.deletedCount === 0) {
@@ -513,6 +606,7 @@ exports.deleteaccount = async (req, res, next) => {
       tblprtuser: prtuserDel.deletedCount,
       tblorder: orderDel.deletedCount,
       tblorderdetails: orderDetailsDel.deletedCount,
+      tblpushtoken_unlinked: tokenUnlink.modifiedCount,
     };
 
     return res.status(200).json(

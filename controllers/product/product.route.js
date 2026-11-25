@@ -20,6 +20,11 @@ router.post("/getAllProductsList", protectAPI, product.getAllProductsList);
 router.post("/getProductByColor", protectAPI, product.getProductByColor);
 router.post("/getProductByProductID",  product.getProductByProductID);
 
+// ✅ Product Description (full text) + show / hide
+router.post("/getProductDescription", product.getProductDescription);
+router.post("/saveProductDescription", protectAPI, product.saveProductDescription);
+router.post("/updateProductVisibility", protectAPI, product.updateProductVisibility);
+
 // ✅ Other
 router.post("/getcategoryproductlist", product.getcategoryproductlist);
 router.post("/createProductSpec", protectAPI, product.createProductSpec);
