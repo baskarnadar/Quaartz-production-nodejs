@@ -474,7 +474,8 @@ exports.getaccountinfo = async (req, res, next) => {
     { 
       $match: { RegUserID: RegUserIDVal } // Filter by OrderRefNo
     },
-    
+    // never send the password hash or OTP code to the app
+    { $project: { RegPassword: 0, RegOtpNo: 0 } },
   ]).toArray();
   
   
