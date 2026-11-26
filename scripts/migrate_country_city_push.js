@@ -137,6 +137,11 @@ async function migrate(db, { dryRun = false, log = console.log } = {}) {
     await countries.createIndex({ CountryID: 1 }, { unique: true, name: "ux_CountryID" });
     await db.collection("tblcity").createIndex({ CountryID: 1 }, { name: "ix_CountryID" });
     await db.collection("tblreginfo").createIndex({ RegCountryID: 1, RegCityID: 1 }, { name: "ix_country_city" });
+    // notification history
+    await db.collection("tblpushmsglog").createIndex({ SentAt: -1 }, { name: "ix_SentAt" });
+    await db.collection("tblpushmsglog").createIndex({ MsgID: 1 }, { unique: true, name: "ux_MsgID" });
+    await db.collection("tblpushmsgrecipient").createIndex({ MsgID: 1, IsRegistered: -1, RegFullName: 1 }, { name: "ix_msg" });
+    await db.collection("tblpushmsgrecipient").createIndex({ RegUserID: 1 }, { name: "ix_RegUserID" });
   }
   summary.indexes = dryRun ? "skipped (dry run)" : "created";
 

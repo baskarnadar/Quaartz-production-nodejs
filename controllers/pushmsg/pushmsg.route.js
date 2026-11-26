@@ -9,8 +9,10 @@ const { protectAPI } = require("../middleware/auth");
 router.post("/list", protectAPI, pushmessage.list);              // token list (filter by group / country / city)
 router.post("/summary", protectAPI, pushmessage.summary);        // counts: registered / non-registered / by country / by city
 router.post("/sendToGroup", protectAPI, pushmessage.sendToGroup); // send to a whole target group
-router.post("/sendmsg", pushmessage.sendmsg);                    // send to selected tokens
+router.post("/sendmsg", protectAPI, pushmessage.sendmsg);        // send to selected tokens (CMS login required)
 router.post("/deleteToken", protectAPI, pushmessage.deleteToken);
+router.post("/history", protectAPI, pushmessage.history);             // notification history
+router.post("/historyDetail", protectAPI, pushmessage.historyDetail); // one history item
 
 // ---- Mobile app ----
 router.post("/saveToken", pushmessage.saveToken);                     // every app start (anonymous)

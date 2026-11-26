@@ -16,6 +16,99 @@ function sendResponse(res, message, error, results) {
   });
 }
 
+// =====================================================================
+// NOTIFICATION HISTORY  (collection: tblpushmsglog)
+// Every send - "Send to Selected" and "Send to a Target Group" - is saved.
+// Saving never blocks or breaks a send.
+// =====================================================================
+const PUSH_LOG = "tblpushmsglog";            // one row per message
+const PUSH_RECIPIENTS = "tblpushmsgrecipient"; // one row per device the message was sent to
+
+// Saves the message and the FULL list of devices it was sent to
+// (name / email / mobile / country / city / device / delivered or failed).
+// Saving never blocks or breaks a send.
+async function logPushMessage(db, info) {
+  const MsgID = uuidv4();
+  const SentAt = new Date();
+  try {
+    const results = Array.isArray(info.results) ? info.results : [];
+    const success = results.filter((r) => r.success).length;
+
+    await db.collection(PUSH_LOG).insertOne({
+      MsgID,
+      SendType: info.SendType, // SELECTED | GROUP
+      TargetGroup: info.TargetGroup || (info.SendType === "SELECTED" ? "SELECTED" : "ALL"),
+      CountryID: info.CountryID || "",
+      CityID: info.CityID || "",
+      Title: String(info.Title || ""),
+      Body: String(info.Body || ""),
+      RecipientCount: Number(info.RecipientCount ?? results.length) || 0,
+      SuccessCount: info.SuccessCount ?? success,
+      FailureCount: info.FailureCount ?? results.length - success,
+      DeactivatedCount: info.DeactivatedCount || 0,
+      Status: info.Status || (results.length && success === 0 ? "FAILED" : "SENT"),
+      ErrorMessage: info.ErrorMessage || "",
+      SentBy: info.SentBy || "ADMIN",
+      SentAt,
+    });
+
+    if (!results.length) return MsgID;
+
+    // who each device belongs to (duplicate token rows: prefer the registered one)
+    const tokenIds = [...new Set(results.map((r) => r.token).filter(Boolean))];
+    const owners = new Map();
+    for (let i = 0; i < tokenIds.length; i += 1000) {
+      const rows = await db
+        .collection("tblpushtoken")
+        .find(
+          { TokenID: { $in: tokenIds.slice(i, i + 1000) } },
+          {
+            projection: {
+              _id: 0, TokenID: 1, IsRegistered: 1, RegUserID: 1, RegFullName: 1, RegEmailAddress: 1,
+              RegMobileNo: 1, RegCountryName: 1, RegCityName: 1, DevicePlatform: 1, DeviceIP: 1, TokenOwnerID: 1,
+            },
+          }
+        )
+        .toArray();
+      for (const r of rows) {
+        const cur = owners.get(r.TokenID);
+        if (!cur || (r.IsRegistered === "YES" && cur.IsRegistered !== "YES")) owners.set(r.TokenID, r);
+      }
+    }
+
+    const docs = results.map((r) => {
+      const o = owners.get(r.token) || {};
+      const registered = o.IsRegistered === "YES";
+      return {
+        MsgID,
+        SentAt,
+        TokenID: r.token,
+        IsRegistered: registered ? "YES" : "NO",
+        RegUserID: registered ? o.RegUserID || "" : "",
+        RegFullName: registered ? o.RegFullName || "" : "",
+        RegEmailAddress: registered ? o.RegEmailAddress || "" : "",
+        RegMobileNo: registered ? o.RegMobileNo || "" : "",
+        RegCountryName: registered ? o.RegCountryName || "" : "",
+        RegCityName: registered ? o.RegCityName || "" : "",
+        DevicePlatform: o.DevicePlatform || "",
+        DeviceIP: o.DeviceIP || o.TokenOwnerID || "",
+        Delivered: !!r.success,
+        ErrorCode: r.success ? "" : r.error?.code || "",
+        ErrorMessage: r.success ? "" : r.error?.message || "",
+      };
+    });
+
+    for (let i = 0; i < docs.length; i += 1000) {
+      await db.collection(PUSH_RECIPIENTS).insertMany(docs.slice(i, i + 1000), { ordered: false });
+    }
+  } catch (e) {
+    console.error("⚠️ Could not save notification history:", e.message);
+  }
+  return MsgID;
+}
+
+const senderOf = (req) => String(req.user?.prtuserid || req.user?.sub || req.body?.SentBy || "ADMIN");
+
 // --------------------------------------
 // 📌 Controller Function (exported as sendmsg to match route)
 // --------------------------------------
@@ -198,6 +291,23 @@ function sendResponse(res, message, error, results) {
     );
 
     // =====================================================
+    // SAVE TO HISTORY
+    // =====================================================
+    try {
+      const db = await connectToMongoDB();
+      await logPushMessage(db, {
+        SendType: "SELECTED",
+        Title: title,
+        Body: body,
+        RecipientCount: tokens.length,
+        results,
+        SentBy: senderOf(req),
+      });
+    } catch (e) {
+      console.error("⚠️ history save failed:", e.message);
+    }
+
+    // =====================================================
     // RESPONSE
     // =====================================================
     return sendResponse(
@@ -216,6 +326,22 @@ function sendResponse(res, message, error, results) {
       "❌ Firebase Error FULL:",
       error
     );
+
+    try {
+      const db = await connectToMongoDB();
+      await logPushMessage(db, {
+        SendType: "SELECTED",
+        Title: req.body?.title,
+        Body: req.body?.body,
+        RecipientCount: Array.isArray(req.body?.token) ? req.body.token.length : req.body?.token ? 1 : 0,
+        results: [],
+        Status: "FAILED",
+        ErrorMessage: error.message || String(error),
+        SuccessCount: 0,
+        FailureCount: Array.isArray(req.body?.token) ? req.body.token.length : 1,
+        SentBy: senderOf(req),
+      });
+    } catch (e) {}
 
     return sendResponse(
       res,
@@ -778,8 +904,8 @@ exports.sendToGroup = async (req, res, next) => {
     const failureCount = results.length - successCount;
     const deactivated = await deactivateDeadTokens(db, results);
 
-    await db.collection("tblpushmsglog").insertOne({
-      MsgID: uuidv4(),
+    await logPushMessage(db, {
+      SendType: "GROUP",
       TargetGroup,
       CountryID: clean(req.body?.CountryID),
       CityID: clean(req.body?.CityID),
@@ -789,8 +915,8 @@ exports.sendToGroup = async (req, res, next) => {
       SuccessCount: successCount,
       FailureCount: failureCount,
       DeactivatedCount: deactivated,
-      SentBy: clean(req.user?.prtuserid || req.user?.sub) || "ADMIN",
-      SentAt: new Date(),
+      results,
+      SentBy: senderOf(req),
     });
 
     return sendResponse(res, "Notification(s) processed.", null, {
@@ -804,6 +930,21 @@ exports.sendToGroup = async (req, res, next) => {
     });
   } catch (error) {
     console.error("❌ sendToGroup error:", error);
+    try {
+      const db = await connectToMongoDB();
+      await logPushMessage(db, {
+        SendType: "GROUP",
+        TargetGroup,
+        Title: title,
+        Body: body,
+        results: [],
+        Status: "FAILED",
+        ErrorMessage: error.message || String(error),
+        SuccessCount: 0,
+        FailureCount: 0,
+        SentBy: senderOf(req),
+      });
+    } catch (e) {}
     return sendResponse(res, error.message || "Firebase send error", { code: error.code || null }, null);
   }
 };
@@ -875,5 +1016,176 @@ exports.sendToGroup = async (req, res, next) => {
       },
       null
     );
+  }
+};
+
+
+// =====================================================================
+// POST /api/pushmsg/history   (CMS)
+// body: { page, pageSize, search, SendType, Status, DateFrom, DateTo }
+// =====================================================================
+exports.history = async (req, res, next) => {
+  try {
+    const src = req.body || {};
+    const page = Math.max(1, parseInt(src.page, 10) || 1);
+    const pageSize = Math.min(200, Math.max(1, parseInt(src.pageSize, 10) || 15));
+
+    const and = [];
+    const search = clean(src.search);
+    const db = await connectToMongoDB();
+    if (search) {
+      const rx = new RegExp(escapeRegex(search), "i");
+      // messages whose recipients match the name / email / mobile
+      const byRecipient = await db
+        .collection(PUSH_RECIPIENTS)
+        .distinct("MsgID", { $or: [{ RegFullName: rx }, { RegEmailAddress: rx }, { RegMobileNo: rx }] });
+      and.push({ $or: [{ Title: rx }, { Body: rx }, { MsgID: { $in: byRecipient } }] });
+    }
+    const type = clean(src.SendType).toUpperCase();
+    if (type === "SELECTED" || type === "GROUP") and.push({ SendType: type });
+    const status = clean(src.Status).toUpperCase();
+    if (status === "SENT" || status === "FAILED") and.push({ Status: status });
+    const from = src.DateFrom ? new Date(src.DateFrom) : null;
+    const to = src.DateTo ? new Date(src.DateTo) : null;
+    if (from && !isNaN(from)) and.push({ SentAt: { $gte: from } });
+    if (to && !isNaN(to)) {
+      to.setHours(23, 59, 59, 999);
+      and.push({ SentAt: { $lte: to } });
+    }
+    const filter = and.length ? { $and: and } : {};
+
+    const col = db.collection(PUSH_LOG);
+    const [rows, totalCount, totals] = await Promise.all([
+      col
+        .aggregate([
+          { $match: filter },
+          { $sort: { SentAt: -1 } },
+          { $skip: (page - 1) * pageSize },
+          { $limit: pageSize },
+          {
+            $lookup: {
+              from: "tblcity",
+              localField: "CityID",
+              foreignField: "CityID",
+              as: "_city",
+            },
+          },
+          {
+            $lookup: {
+              from: "tblcountry",
+              localField: "CountryID",
+              foreignField: "CountryID",
+              as: "_country",
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              MsgID: 1,
+              SendType: 1,
+              TargetGroup: 1,
+              Title: 1,
+              Body: 1,
+              RecipientCount: 1,
+              SuccessCount: 1,
+              FailureCount: 1,
+              DeactivatedCount: 1,
+              Status: 1,
+              ErrorMessage: 1,
+              SentBy: 1,
+              SentAt: 1,
+              CityName: { $ifNull: [{ $arrayElemAt: ["$_city.EnCityName", 0] }, ""] },
+              CountryName: { $ifNull: [{ $arrayElemAt: ["$_country.EnCountryName", 0] }, ""] },
+            },
+          },
+        ])
+        .toArray(),
+      col.countDocuments(filter),
+      col
+        .aggregate([
+          {
+            $group: {
+              _id: null,
+              messages: { $sum: 1 },
+              delivered: { $sum: { $ifNull: ["$SuccessCount", 0] } },
+              failed: { $sum: { $ifNull: ["$FailureCount", 0] } },
+            },
+          },
+        ])
+        .toArray(),
+    ]);
+
+    return sendResponse(res, "History fetched.", null, {
+      rows,
+      page,
+      pageSize,
+      totalCount,
+      totalPages: Math.max(1, Math.ceil(totalCount / pageSize)),
+      totals: totals[0] ? { messages: totals[0].messages, delivered: totals[0].delivered, failed: totals[0].failed } : { messages: 0, delivered: 0, failed: 0 },
+    });
+  } catch (error) {
+    console.error("❌ history error:", error);
+    next(error);
+  }
+};
+
+// POST /api/pushmsg/historyDetail
+// body: { MsgID, page?, pageSize?, search?, Result? ("DELIVERED" | "FAILED") }
+// -> message + full recipient list (paged, max 500 per page)
+exports.historyDetail = async (req, res, next) => {
+  try {
+    const MsgID = clean(req.body?.MsgID);
+    if (!MsgID) return sendResponse(res, "MsgID is required.", { type: "validation_error" }, null);
+
+    const page = Math.max(1, parseInt(req.body?.page, 10) || 1);
+    const pageSize = Math.min(500, Math.max(1, parseInt(req.body?.pageSize, 10) || 100));
+
+    const db = await connectToMongoDB();
+    const msg = await db.collection(PUSH_LOG).findOne({ MsgID }, { projection: { _id: 0 } });
+    if (!msg) return res.status(404).json({ statusCode: 404, message: "Not found", data: null });
+
+    const filter = { MsgID };
+    const search = clean(req.body?.search);
+    if (search) {
+      const rx = new RegExp(escapeRegex(search), "i");
+      filter.$or = [{ RegFullName: rx }, { RegEmailAddress: rx }, { RegMobileNo: rx }, { RegCityName: rx }, { DeviceIP: rx }];
+    }
+    const result = clean(req.body?.Result).toUpperCase();
+    if (result === "DELIVERED") filter.Delivered = true;
+    if (result === "FAILED") filter.Delivered = false;
+
+    const col = db.collection(PUSH_RECIPIENTS);
+    const [recipients, recipientTotal, registered] = await Promise.all([
+      col.find(filter, { projection: { _id: 0, MsgID: 0 } })
+        .sort({ IsRegistered: -1, RegFullName: 1 })
+        .skip((page - 1) * pageSize)
+        .limit(pageSize)
+        .toArray(),
+      col.countDocuments(filter),
+      col.countDocuments({ MsgID, IsRegistered: "YES" }),
+    ]);
+
+    // older history rows (saved before this change) kept recipients inside the message
+    if (!recipientTotal && Array.isArray(msg.Recipients) && msg.Recipients.length) {
+      return sendResponse(res, "History item.", null, {
+        ...msg,
+        recipients: msg.Recipients.map((r) => ({ ...r, Delivered: !!r.Success })),
+        recipientTotal: msg.Recipients.length,
+        recipientPages: 1,
+      });
+    }
+
+    const { Recipients, Failures, ...message } = msg;
+    return sendResponse(res, "History item.", null, {
+      ...message,
+      recipients,
+      recipientTotal,
+      recipientPages: Math.max(1, Math.ceil(recipientTotal / pageSize)),
+      registeredCount: registered,
+      page,
+      pageSize,
+    });
+  } catch (error) {
+    next(error);
   }
 };
